@@ -36,6 +36,8 @@ var
   ConfigPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
+var
+  ResultCode: Integer;
 begin
   // Crear una página interactiva personalizada
   ConfigPage := CreateInputQueryPage(wpSelectDir,
@@ -52,6 +54,21 @@ begin
   ConfigPage.Values[0] := 'Dev';
   ConfigPage.Values[1] := '';
   ConfigPage.Values[2] := '';
+
+  // Asesinar silenciosamente cualquier instancia rebelde o zombie del agente antes de instalar
+  Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+// Esta función se dispara antes de proceder con pasos críticos de desinstalación
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // Asesinar antes de desinstalar para evitar bloqueos
+    Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
 end;
 
 // Esta función se dispara cuando el archivo se ha copiado

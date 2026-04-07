@@ -19,11 +19,21 @@ pub async fn run(
     let topico_suscripcion = cfg.topic_subscripcion();
     let topico_broadcast = cfg.topic_broadcast_update();
 
+    let mut intentos_desconectado = 0;
+    let mut es_primera_conexion = true;
+
     loop {
         tokio::select! {
             event = event_loop.poll() => {
                 match event {
                     Ok(Event::Incoming(Incoming::ConnAck(_))) => {
+                        if es_primera_conexion {
+                            let _ = plataforma.mostrar_notificacion("PrintAgent RS", "🟢 ¡Agente iniciado y enlazado al servidor de impresión en línea!").await;
+                            es_primera_conexion = false;
+                        } else if intentos_desconectado > 0 {
+                            let _ = plataforma.mostrar_notificacion("PrintAgent RS", "🟢 Conexión reestablecida exitosamente con el Servidor MQTT.").await;
+                            intentos_desconectado = 0;
+                        }
                         let c = client.clone();
                         let ts = topico_suscripcion.clone();
                         let tb = topico_broadcast.clone();
@@ -52,6 +62,10 @@ pub async fn run(
                         });
                     }
                     Err(e) => {
+                        intentos_desconectado += 1;
+                        if intentos_desconectado == 1 || intentos_desconectado % 5 == 0 {
+                            let _ = plataforma.mostrar_notificacion("PrintAgent RS", "🔴 Conexión perdida. El agente se está reconectando en segundo plano...").await;
+                        }
                         tracing::warn!("Error MQTT al intentar conectar a broker {} (reconectando): {}", cfg.broker_url(), e);
                         // rumqttc tiene su propio backoff de reconexión, pero evitamos un tight loop si la red cae brusca
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;

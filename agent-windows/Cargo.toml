@@ -19,6 +19,7 @@ windows-service = "0.7"
 toml = "0.8"
 async-trait = "0.1.89"
 tray-item = "0.10"
+tauri-winrt-notification = "0.2"
 
 [build-dependencies]
 embed-resource = "2.4"

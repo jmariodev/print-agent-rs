@@ -21,4 +21,17 @@ impl Plataforma for WindowsPlatform {
         // En el futuro se podría usar "wmic printer where default=true get name"
         Ok(None)
     }
+
+    async fn mostrar_notificacion(&self, titulo: &str, mensaje: &str) -> Result<()> {
+        use tauri_winrt_notification::{Duration, Sound, Toast};
+        
+        let _ = Toast::new(Toast::POWERSHELL_APP_ID)
+            .title(titulo)
+            .text1(mensaje)
+            .sound(Some(Sound::SMS))
+            .duration(Duration::Short)
+            .show();
+            
+        Ok(())
+    }
 }

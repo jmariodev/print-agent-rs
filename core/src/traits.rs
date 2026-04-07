@@ -6,4 +6,5 @@ pub trait Plataforma: Send + Sync {
     async fn listar_impresoras(&self) -> Result<Vec<String>>;
     async fn imprimir(&self, nombre: &str, ruta_pdf: &str) -> Result<()>;
     async fn impresora_predeterminada(&self) -> Result<Option<String>>;
+    async fn mostrar_notificacion(&self, titulo: &str, mensaje: &str) -> Result<()>;
 }
