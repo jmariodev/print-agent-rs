@@ -1,0 +1,18 @@
+[package]
+name = "agent-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+rumqttc = "0.25.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+anyhow = "1"
+tracing = "0.1"
+reqwest = { version = "0.13.2", features = ["stream"] }
+sha2 = "0.11.0"
+base64 = "0.22"
+toml = "0.8"
+scopeguard = "1.2"

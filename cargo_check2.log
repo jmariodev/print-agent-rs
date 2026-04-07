@@ -1,0 +1,6 @@
+    Updating crates.io index
+error: no matching package found
+searched package name: `agent_core`
+perhaps you meant:      agent-core
+location searched: C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\core
+required by package `agent-windows v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\agent-windows)`

@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "core",
+    "agent-windows",
+]
+resolver = "2"

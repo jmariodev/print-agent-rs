@@ -1,0 +1,14 @@
+    Updating crates.io index
+    Blocking waiting for file lock on package cache
+     Locking 6 packages to latest compatible versions
+ Downgrading serde_spanned v1.1.1 -> v0.6.9
+ Downgrading toml v1.1.2+spec-1.1.0 -> v0.8.23 (available: v1.1.2+spec-1.1.0)
+ Downgrading toml_datetime v1.1.1+spec-1.1.0 -> v0.6.11
+      Adding toml_edit v0.22.27
+      Adding toml_write v0.1.2
+ Downgrading winnow v1.0.1 -> v0.7.15
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Checking agent-core v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\core)
+    Checking agent-windows v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\agent-windows)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.31s
