@@ -2,11 +2,19 @@ use anyhow::{Result, Context, bail};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// Lista las impresoras instaladas en el sistema usando WMIC.
 pub async fn listar_impresoras_win() -> Result<Vec<String>> {
-    // Comando para obtener solo el nombre de las impresoras
-    let output = Command::new("wmic")
-        .args(["printer", "get", "name"])
+    let mut std_cmd = std::process::Command::new("wmic");
+    std_cmd.args(["printer", "get", "name"]);
+    std_cmd.creation_flags(CREATE_NO_WINDOW);
+    
+    let mut tokio_cmd = Command::from(std_cmd);
+
+    let output = tokio_cmd
         .output()
         .await
         .context("Falló al ejecutar wmic para listar impresoras")?;
@@ -30,14 +38,17 @@ pub async fn listar_impresoras_win() -> Result<Vec<String>> {
 
 /// Envía un PDF a imprimir usando SumatraPDF.exe.
 pub async fn imprimir_win(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
-    // SumatraPDF.exe debe estar en el working directory o en el PATH
-    let fut = Command::new("SumatraPDF.exe")
-        .args([
-            "-print-to", nombre_impresora,
-            "-silent",
-            ruta_pdf,
-        ])
-        .status();
+    let mut std_cmd = std::process::Command::new("SumatraPDF.exe");
+    std_cmd.args([
+        "-print-to", nombre_impresora,
+        "-silent",
+        ruta_pdf,
+    ]);
+    std_cmd.creation_flags(CREATE_NO_WINDOW);
+    
+    let mut tokio_cmd = Command::from(std_cmd);
+
+    let fut = tokio_cmd.status();
 
     let status = timeout(Duration::from_secs(30), fut)
         .await

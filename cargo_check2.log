@@ -1,6 +1,19 @@
-    Updating crates.io index
-error: no matching package found
-searched package name: `agent_core`
-perhaps you meant:      agent-core
-location searched: C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\core
-required by package `agent-windows v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\agent-windows)`
+   Compiling agent-windows v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\agent-windows)
+error: failed to run custom build command for `agent-windows v0.1.0 (C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\agent-windows)`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\Asus\Documents\Projects-Gama\AIR\print-agent-rs\target\debug\build\agent-windows-28a302e4f39e341c\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rerun-if-changed=../resource/icon/logo.ico
+  cargo:rerun-if-changed=../resource/icon/app.rc
+  Microsoft (R) Windows (R) Resource Compiler Version 10.0.10011.16384
+  Copyright (C) Microsoft Corporation.  All rights reserved.
+
+
+  ../resource/icon/app.rc(1) : error RC2135 : file not found: ..\resource\icon\logo.ico
+
+  --- stderr
+
+  thread 'main' (27916) panicked at C:\Users\Asus\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\embed-resource-2.5.2\src\windows_msvc.rs:39:13:
+  RC.EXE failed to compile specified resource file
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -64,11 +64,17 @@ Para instalar y poner a correr este agente:
 3. Instala e inicia el Agente en formato de Servicio de Windows usando la ruta de este ejecutable.
 "@ | Out-File -FilePath $readme -Encoding utf8
 
-# 7. Comprimir distribución
-$zipFile = "dist\PrintAgentRS.zip"
-if (Test-Path $zipFile) { Remove-Item $zipFile }
-Compress-Archive -Path "$dist\*" -DestinationPath $zipFile -Force
-
-Write-Host "`n>>> ÉXITO: Distribución generada en $zipFile" -ForegroundColor Green
-Write-Host "Contenido del ZIP:"
-Get-ChildItem $dist | Select-Object Name
+# 7. Compilar Asistente de Instalación con Inno Setup
+$iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if (Test-Path $iscc) {
+    Write-Host "`n>>> Empaquetando Instalador Inno Setup (.exe)..." -ForegroundColor Cyan
+    & $iscc .\scripts\installer.iss
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "`n>>> ÉXITO: Instalador generado en dist\PrintAgentRS_Installer.exe" -ForegroundColor Green
+    } else {
+        Write-Host "`n!!! Error al crear el instalador Inno Setup." -ForegroundColor Red
+    }
+} else {
+    Write-Host "!!! ADVERTENCIA: ISCC no encontrado en C:\Program Files (x86)\Inno Setup 6\ISCC.exe." -ForegroundColor Yellow
+    Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
+}

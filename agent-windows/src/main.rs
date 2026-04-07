@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -30,7 +32,6 @@ async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(EnvFilter::new(level))
         .with(fmt::layer().with_writer(non_blocking))
-        .with(fmt::layer().with_writer(std::io::stdout))
         .init();
 
     tracing::info!(
@@ -50,12 +51,31 @@ async fn main() -> Result<()> {
     let plataforma: Arc<dyn agent_core::traits::Plataforma> = Arc::new(WindowsPlatform);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // Capturar Ctrl+C
+    // Capturar Ctrl+C (por si se corriera atachado a terminal manual)
+    let shutdown_tx_ctrlc = shutdown_tx.clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
-        tracing::info!("Señal de cierre recibida.");
-        let _ = shutdown_tx.send(true);
+        tracing::info!("Señal de cierre recibida vía consola.");
+        let _ = shutdown_tx_ctrlc.send(true);
     });
+
+    // ── 6. Iniciar Bandeja de Sistema (System Tray) ──────────────────────────
+    let mut tray = tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("app-icon"))
+        .unwrap_or_else(|_| tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("")).unwrap());
+    
+    let tray_env = format!("PrintAgent: {:?}", cfg.ambiente);
+    let _ = tray.add_label(&tray_env);
+    
+    let _ = tray.inner_mut().add_separator();
+    
+    let shutdown_tx_tray = shutdown_tx.clone();
+    let _ = tray.add_menu_item("Cerrar Agente", move || {
+        tracing::info!("Señal de cierre iniciada por usuario desde Bandeja.");
+        let _ = shutdown_tx_tray.send(true);
+    });
+    
+    // Mantener la variable tray viva eludiendo el drop hasta que termine main
+    let _tray_keeper = tray;
 
     mqtt::run(cfg, plataforma, shutdown_rx).await?;
 
