@@ -1,7 +1,7 @@
 [Setup]
 AppName=PrintAgent RS
 AppVersion=1.0.0
-DefaultDirName={autopf}\PrintAgentRS
+DefaultDirName={localappdata}\PrintAgentRS
 DefaultGroupName=PrintAgent RS
 OutputDir=..\dist
 OutputBaseFilename=PrintAgentRS_Installer
@@ -9,11 +9,11 @@ Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "..\dist\PrintAgentRS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "..\dist\PrintAgentRS\*"; DestDir: "{app}"; Excludes: "config.toml"; Flags: ignoreversion recursesubdirs
 
 [Dirs]
 ; Concedemos permisos de escritura a todos los usuarios para que el agente pueda generar los logs y PDFs temporales
@@ -78,16 +78,20 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Escribimos el config.toml generado, asegurando minúsculas ya que Rust es estricto (serde lowercase)
-    SetArrayLength(TomlLines, 6);
-    TomlLines[0] := 'ambiente = "' + Lowercase(ConfigPage.Values[0]) + '"';
-    TomlLines[1] := 'id_cliente = "' + Lowercase(ConfigPage.Values[1]) + '"';
-    TomlLines[2] := 'id_punto = "' + Lowercase(ConfigPage.Values[2]) + '"';
-    TomlLines[3] := '';
-    TomlLines[4] := '# Puedes descomentar y editar las lineas maestras si fuese necesario:';
-    TomlLines[5] := '# broker_url = "mqtt://..."';
-    
-    // Guardar el archivo fisico en el disco final de la app
-    SaveStringsToFile(ExpandConstant('{app}\config.toml'), TomlLines, False);
+    // Si el config.toml ya existe (ej: actualización silenciosa OTA), lo respetamos absolutamente
+    if not FileExists(ExpandConstant('{app}\config.toml')) then
+    begin
+      // Escribimos el config.toml generado, asegurando minúsculas ya que Rust es estricto (serde lowercase)
+      SetArrayLength(TomlLines, 6);
+      TomlLines[0] := 'ambiente = "' + Lowercase(ConfigPage.Values[0]) + '"';
+      TomlLines[1] := 'id_cliente = "' + Lowercase(ConfigPage.Values[1]) + '"';
+      TomlLines[2] := 'id_punto = "' + Lowercase(ConfigPage.Values[2]) + '"';
+      TomlLines[3] := '';
+      TomlLines[4] := '# Puedes descomentar y editar las lineas maestras si fuese necesario:';
+      TomlLines[5] := '# broker_url = "mqtt://..."';
+      
+      // Guardar el archivo fisico en el disco final de la app
+      SaveStringsToFile(ExpandConstant('{app}\config.toml'), TomlLines, False);
+    end;
   end;
 end;

@@ -52,7 +52,7 @@ impl Config {
     pub fn broker_url(&self) -> String {
         let raw = self.broker_url
             .clone()
-            .unwrap_or_else(|| "REEMPLAZAR_DESPUES_DE_PRUEBAS".to_string());
+            .unwrap_or_else(|| "localhost".to_string());
 
         let mut cleaned = raw.as_str();
         // Remove protocol (mqtt://, wss://, etc)
@@ -78,7 +78,7 @@ impl Config {
     pub fn update_url_for(&self, target_env: &str) -> String {
         self.update_url
             .clone()
-            .unwrap_or_else(|| format!("https://HOST_UPDATE_REEMPLAZAR_DESPUES/print-agent/{}/", target_env))
+            .unwrap_or_else(|| format!("http://localhost:8000/print-agent/{}/", target_env))
     }
 }
 

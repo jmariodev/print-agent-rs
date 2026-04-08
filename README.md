@@ -1,99 +1,88 @@
 # PrintAgent RS 🚀
 
-**PrintAgent RS** es un agente de impresión de alto rendimiento escrito en Rust, diseñado para operar como un servicio robusto en Windows. Su arquitectura modular permite una fácil portabilidad a otras plataformas como Android o iOS en el futuro.
+**PrintAgent RS** es un poderoso agente en segundo plano (Daemon) corporativo escrito en Rust. Está diseñado para operar invisiblemente desde la Bandeja de Sistema de Windows, recibir flujos de datos en la nube (MQTT) e imprimir documentos PDF sin interrupción.
 
-## 📋 Características Principales
-
-- **Arquitectura OS-Agnóstica:** Lógica de negocio separada de la implementación nativa mediante un sistema de Trait (`Plataforma`).
-- **Comunicación MQTT:** Recibe comandos y reporta estados en tiempo real a través de un broker MQTT.
-- **Motor de Impresión PDF:** Utiliza SumatraPDF para una impresión silenciosa, rápida y confiable.
-- **Auto-Actualización Segura:** Sistema integrado de descarga con verificación de integridad criptográfica (SHA256).
-- **Cero Dependencias (Static Runtime):** Compilación con enlace estático para funcionar en cualquier Windows "limpio" sin necesidad de Visual C++ Redistributable.
-- **Resiliencia:** Manejo de errores estructurado, reconexión automática MQTT y limpieza de archivos temporales mediante RAII (Drop).
+La arquitectura fue rediseñada para ser robusta, auto-actualizable sin intervención técnica, y absolutamente inmune al temido ecosistema de requerimientos de permisos (Cero-UAC).
 
 ---
 
-## 🏗️ Estructura del Proyecto (Workspace)
+## 📋 Características de Clase Mundial
 
-El proyecto está organizado como un Workspace de Rust para separar responsabilidades:
-
-- **/core:** Contiene toda la lógica de negocio, protocolos de mensajes (JSON), el bucle de eventos MQTT y el motor de actualizaciones. **No contiene código específico de ningún SO.**
-- **/agent-windows:** Implementación nativa para Windows. Contiene el cargador de configuración, el servicio del sistema y las llamadas FFI a la API de Win32 para gestionar impresoras.
-- **/resources:** Directorio para binarios externos necesarios (ej. `SumatraPDF.exe`).
-- **/scripts:** Herramientas de automatización para compilación y empaquetado.
-
----
-
-## 🛠️ Requisitos de Desarrollo
-
-Para compilar el proyecto en Windows, necesitas:
-
-1. **Rust Toolchain:** Instalado vía [rustup](https://rustup.rs/). Asegúrate de usar el target `x86_64-pc-windows-msvc`.
-2. **Visual Studio Build Tools:** Es necesario el enlazador `link.exe`.
-   - Seleccionar la carga de trabajo: *"Desarrollo para el escritorio con C++"*.
-   - Incluir: MSVC v143+ y Windows 10/11 SDK.
-3. **SumatraPDF.exe:** Colocar una copia en la carpeta `resources/`.
+- **Daemon Invisible:** Corre directamente en el fondo (`#![windows_subsystem = "windows"]`) apoyado en un discreto ícono de la Bandeja de Sistema, eliminando consolas oscuras.
+- **Actualizaciones Silenciosas (OTA):** Equipado con un mecanismo de *Zero-Downtime*. Descarga actualizaciones desde un Topic MQTT "Broadcast", verifica la integridad por Hash SHA-256 e invoca al Instalador de fondo. **No requiere Permisos de Administrador (Cero UAC)**.
+- **Notificaciones Nativas Anti-Spam:** Se comunica con el usuario enviando alertas nativas Toast de Windows (WinRT) al ocurrir desconexiones graves y al reconectarse con el Broker.
+- **Instalador Profesional (Inno Setup):** Un empaquetador `.exe` que guía visualmente al operario al pedir el *Ambiente* y las *Credenciales*, persistiendo esta configuración incluso ante desinstalaciones.
+- **Cero Dependencias (Static Runtime):** Funciona al instante en cualquier computadora básica de Windows sin requerir instalación de perfiles como "Visual Studio C++".
 
 ---
 
-## 🚀 Compilación y Empaquetado
+## 🏗️ Flujo y Arquitectura del Proyecto
 
-Para generar una distribución lista para producción (Cero dependencias), utiliza el script de PowerShell incluido:
+El código está compartimentado en un Workspace inmaculado para separar conceptos.
 
-```powershell
-.\scripts\pack.ps1
-```
-
-Este script:
-1. Compila con `+crt-static` para eliminar dependencias de DLLs externas.
-2. Genera la carpeta `dist/PrintAgentRS` con el ejecutable, recursos y configuración de ejemplo.
-3. Crea un archivo `PrintAgentRS.zip` listo para despliegue.
+- **/core:** El núcleo intocable del sistema. Contiene el bucle asíncrono principal (Tokio + Rumqttc), procesadores de Mensajes, verificación criptográfica OTA (`updater.rs`) y todas las Interfaces Agnósticas al OS.
+- **/agent-windows:** El cargador nativo. Inicia el Runtime de Tokio, captura el "Tray Icon" de Windows y procesa las llamadas crudas al sistema como `wmic` para impresoras, garantizando nulo parpadeo de ventanas (`CREATE_NO_WINDOW`).
+- **/scripts:** Toda la magia de automatización CI/CD de un solo clic. Principalmente `pack.ps1` que engendra el instalador `.exe` final e imprime la firma `version.txt`.
 
 ---
 
-## 📡 Protocolo de Comunicación (MQTT)
+## 🚀 Despliegue y Compilación (CI/CD Local)
 
-El agente escucha en el tópico: `{client_id}/comandos`
+Todo el despliegue a producción de esta arquitectura está resumido en un único comando asombroso:
 
-### Ejemplo: Listar Impresoras
-**Request:**
+1. Modifica la versión o el código fuente que desees alterar en `agent-windows/Cargo.toml`.
+2. Abre la consola PowerShell en la raíz del proyecto.
+3. Ejecuta el empaquetador mágico:
+   ```powershell
+   .\scripts\pack.ps1
+   ```
+
+**¿Qué hace este comando?**
+Genera binarios estáticos absolutos, copia recursos PDF temporales, empaqueta el Instalador interactivo usando Inno Setup, deduce la versión compilada y te escupe dos elementos en tu carpeta `dist/`:
+- `PrintAgentRS_Installer.exe`
+- `version.txt`
+
+Sube únicamente esos dos archivos resultantes a tu servidor web privado y ¡estás listo para lanzar el comando OTA de forma global!
+
+---
+
+## 📡 Protocolo Glocal (MQTT)
+
+La arquitectura de conectividad es dual. Tienes **tópicos masivos** para administración global, y **tópicos locales** transaccionales.
+
+### 1. Actualización Silenciosa Global (Broadcast)
+El canal general escucha en modo fire-and-forget: `update-air-{ambiente}` (ej: `update-air-dev`).
+Si envías un mensaje MQTT a ese topic, 1,000 computadores esparcidos en el país se actualizarán simultáneamente al servidor, reiniciándose en silencio en menos de 5 segundos.
+
+### 2. Transaccional de Impresión y Listado
+El agente local escucha peticiones en su ID: `{ambiente}-{id_cliente}-{id_punto}-imp-local`
+
+**Comando (Listar Impresoras):**
 ```json
-{ "action": "listPrinters" }
-```
-**Response:**
-```json
-{ "status": "ok", "printers": ["HP LaserJet Pro", "Microsoft Print to PDF"] }
+{ 
+    "action": "listPrinters", 
+    "responseTopic": "devolver-impresora-aqui" 
+}
 ```
 
-### Ejemplo: Imprimir PDF
-**Request:**
+**Comando (Imprimir):**
 ```json
 {
   "action": "printPdf",
-  "printerName": "HP LaserJet Pro",
+  "printerName": "Caja 1 POS",
   "pdfBase64": "JVBERi0xLjQK...",
-  "jobId": "uuid-12345"
+  "responseTopic": "devolver-status-aqui"
 }
 ```
 
 ---
 
-## 📱 Futuras Implementaciones (Android / iOS)
+## 🛡️ Superpoderes del Ecosistema Config
 
-Gracias al diseño basado en el trait `Plataforma` en `core/src/traits.rs`, añadir soporte para una nueva plataforma es sencillo:
-
-1. Crear un nuevo crate (ej. `agent-android`).
-2. Implementar el trait `Plataforma` usando JNI para llamar al sistema de impresión de Android.
-3. El código de `core` se reutiliza al 100% sin modificaciones, ya que el runtime MQTT y la lógica de archivos son estándar en Rust.
-
----
-
-## 🛡️ Mejores Prácticas Aplicadas
-
-- **Seguridad:** Validación de Hash SHA256 antes de aplicar cualquier actualización de binario.
-- **Memoria:** Gestión de archivos temporales mediante `scopeguard` para asegurar que el disco se mantenga limpio incluso tras errores inesperados.
-- **Logging:** Uso de `tracing` con rotación diaria de logs en la carpeta `./logs`.
-- **Async:** Basado en `Tokio` para manejar múltiples comandos y la conexión de red de forma eficiente y no bloqueante.
+Las credenciales están blindadas en el archivo `config.toml`. Si necesitas modificar una credencial de forma urgente o en caso de error:
+1. Abre el block de notas hacia `C:\Users\TU_USUARIO\AppData\Local\PrintAgentRS\config.toml`.
+2. Altera la variable a mano.
+3. Haz clic derecho en el ícono del Agente (Esquina inferior derecha) y presiona **"Reiniciar Agente"**. El agente se "clonará" a sí mismo destruyendo a su yo del pasado, y reestablecerá su nueva vida en milisegundos con las configuraciones relucientes. ¡No más reiniciar el PC entero!
 
 ---
-*Desarrollado con enfoque en robustez y escalabilidad.*
+*Desarrollado y mantenido con estándares de máxima resiliencia arquitectónica.*

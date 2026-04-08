@@ -24,6 +24,14 @@ async fn main() -> Result<()> {
     // ── 2. Cargar configuración ──────────────────────────────────────────────
     let cfg = config_loader::cargar_config()?;
 
+    // ── 2.5 Limpieza de residuos de actualización (OTA) ──────────────────────
+    tokio::spawn(async {
+        // Darle 5 segundos al Instalador previo (Inno Setup) para que se cierre por completo
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        let _ = tokio::fs::remove_file("PrintAgentRS_Update.exe").await;
+        let _ = tokio::fs::remove_file("PrintAgentRS_Installer.tmp.exe").await;
+    });
+
     // ── 3. Configurar logging estructurado ───────────────────────────────────
     let level = cfg.log_level.as_deref().unwrap_or("info");
     let file_appender = rolling::daily("logs", "agent.log");
@@ -68,10 +76,26 @@ async fn main() -> Result<()> {
     
     let _ = tray.inner_mut().add_separator();
     
-    let shutdown_tx_tray = shutdown_tx.clone();
+    let shutdown_tx_tray_re = shutdown_tx.clone();
+    let _ = tray.add_menu_item("Reiniciar Agente", move || {
+        tracing::info!("Usuario solicitó reinicio. Lanzando nueva copia...");
+        // Clonar el proceso actual independientemente
+        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("print-agent.exe"));
+        match std::process::Command::new(exe).spawn() {
+            Ok(_) => {
+                // Suicidar la instancia vieja elegantemente
+                let _ = shutdown_tx_tray_re.send(true);
+            }
+            Err(e) => {
+                tracing::error!("No se pudo reiniciar el Agente: {}", e);
+            }
+        }
+    });
+
+    let shutdown_tx_tray_cl = shutdown_tx.clone();
     let _ = tray.add_menu_item("Cerrar Agente", move || {
         tracing::info!("Señal de cierre iniciada por usuario desde Bandeja.");
-        let _ = shutdown_tx_tray.send(true);
+        let _ = shutdown_tx_tray_cl.send(true);
     });
     
     // Mantener la variable tray viva eludiendo el drop hasta que termine main

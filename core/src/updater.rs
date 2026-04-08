@@ -32,12 +32,15 @@ pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Re
 
     tracing::info!("Nueva versión disponible: {} → {}", version_actual, version_nueva);
 
-    let exe_url = format!("{}print-agent.exe", update_url);
+    // Descargar el Ejecutable del Instalador (Inno Setup)
+    let exe_url = format!("{}PrintAgentRS_Installer.exe", update_url);
     let mut respuesta = client.get(&exe_url).send().await
-        .context("Error descargando nueva versión")?;
+        .context("Error descargando instalador de actualización")?;
 
-    let tmp_path = "print-agent.new.exe";
-    let mut archivo = tokio::fs::File::create(tmp_path).await?;
+    // Construir la ruta absoluta explícitamente para evitar problemas de PATH en Windows
+    let cur_dir = std::env::current_dir()?;
+    let tmp_path = cur_dir.join("PrintAgentRS_Installer.tmp.exe");
+    let mut archivo = tokio::fs::File::create(&tmp_path).await?;
     let mut hasher = Sha256::new();
 
     while let Some(chunk) = respuesta.chunk().await? {
@@ -45,37 +48,38 @@ pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Re
         archivo.write_all(&chunk).await?;
     }
     archivo.flush().await?;
+    
+    // IMPORTANTE: Liberar el archivo en el OS. Si el archivo sigue abierto con permisos 
+    // de escritura, Windows bloqueará la ejecución (Os Error 32: Sharing Violation).
+    drop(archivo);
 
     let hash = hasher.finalize();
     let hex = hash.iter()
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
+        
     if hex != hash_esperado {
-        tokio::fs::remove_file(tmp_path).await.ok();
-        bail!("Hash SHA256 no coincide — posible ataque MITM. Descarga abortada.");
+        tokio::fs::remove_file(&tmp_path).await.ok();
+        bail!("Hash SHA256 no coincide — posible ataque MITM o descarga corrupta. Descarga abortada.");
     }
 
-    tracing::info!("Hash verificado. Lanzando actualización...");
-    orquestar_reemplazo().await?;
+    tracing::info!("Hash verificado. Lanzando actualización silenciosa OTA...");
+    
+    // Renombrar temporal al final (Ruta absoluta)
+    let final_exe = cur_dir.join("PrintAgentRS_Update.exe");
+    tokio::fs::rename(&tmp_path, &final_exe).await?;
 
-    Ok(true)
-}
+    tracing::info!("Ruta absoluta resuelta para ejecución: {:?}", final_exe);
 
-async fn orquestar_reemplazo() -> Result<()> {
-    let bat = r#"@echo off
-timeout /t 3 /nobreak > NUL
-move /Y "C:\PrintAgent\print-agent.new.exe" "C:\PrintAgent\print-agent.exe"
-sc start PrintAgentRS
-del "C:\PrintAgent\update.bat"
-"#;
-
-    tokio::fs::write("update.bat", bat).await
-        .context("No se pudo escribir update.bat")?;
-
-    std::process::Command::new("cmd")
-        .args(["/C", "update.bat"])
+    // Ejecutar de manera desatendida el Instalador garantizando que invoque elevación UAC nativa
+    std::process::Command::new(&final_exe)
+        .arg("/VERYSILENT")
+        .arg("/SUPPRESSMSGBOXES")
+        .arg("/NORESTART")
         .spawn()
-        .context("No se pudo lanzar update.bat")?;
+        .context("No se pudo iniciar el instalador silencioso OTA")?;
 
+    // Suicidio del proceso padre para destrabar los archivos antes de que el Setup sobreescriba todo.
+    // Inno Setup usará TaskKill de todas formas gracias a nuestro parche previo.
     std::process::exit(0);
 }

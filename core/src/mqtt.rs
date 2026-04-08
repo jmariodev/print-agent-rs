@@ -102,7 +102,7 @@ async fn manejar_mensaje(
             const VERSION_ACTUAL: &str = env!("CARGO_PKG_VERSION");
             tracing::info!("Iniciando comprobación de red silenciosa a {}", update_url);
             if let Err(e) = crate::updater::verificar_y_descargar(&update_url, VERSION_ACTUAL).await {
-                tracing::warn!("Proceso de actualización broadcast abortado/fallido: {}", e);
+                tracing::warn!("Proceso de actualización broadcast abortado/fallido: {:?}", e);
             }
         });
         return;
@@ -170,7 +170,7 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
                 const VERSION_ACTUAL: &str = env!("CARGO_PKG_VERSION");
                 tracing::info!("Comprobando actualización para el ambiente: {}", env_solicitado);
                 if let Err(e) = crate::updater::verificar_y_descargar(&update_url, VERSION_ACTUAL).await {
-                    tracing::warn!("Error fallido en UpdateAir transaccional: {}", e);
+                    tracing::warn!("Error fallido en UpdateAir transaccional: {:?}", e);
                 }
             });
             

@@ -78,3 +78,19 @@ if (Test-Path $iscc) {
     Write-Host "!!! ADVERTENCIA: ISCC no encontrado en C:\Program Files (x86)\Inno Setup 6\ISCC.exe." -ForegroundColor Yellow
     Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
 }
+
+# 8. Generar manifiesto de versión (version.txt) para Actualizaciones Automáticas (OTA)
+$installerPath = "dist\PrintAgentRS_Installer.exe"
+if (Test-Path $installerPath) {
+    Write-Host "`n>>> Generando firma OTA (version.txt)..." -ForegroundColor Cyan
+    # Extraemos la version directamente del Cargo.toml de agent-windows usando expresiones regulares
+    $versionMatches = (Get-Content ".\agent-windows\Cargo.toml" -Raw) -match 'version\s*=\s*"([^"]+)"'
+    $versionStr = if ($matches[1]) { $matches[1] } else { "1.0.0" }
+    
+    # Hasheo SHA256 estricto del archivo final
+    $hashStr = (Get-FileHash -Path $installerPath -Algorithm SHA256).Hash.ToLower()
+    
+    # Escribir estructura requerida por updater.rs
+    "$versionStr $hashStr" | Out-File -FilePath "dist\version.txt" -Encoding ascii
+    Write-Host ">>> ÉXITO: dist\version.txt generado correctamente (v$versionStr)" -ForegroundColor Green
+}
