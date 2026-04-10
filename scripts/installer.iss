@@ -28,8 +28,8 @@ Name: "{group}\PrintAgent RS"; Filename: "{app}\print-agent.exe"
 Name: "{group}\Uninstall PrintAgent RS"; Filename: "{uninstallexe}"
 
 [Run]
-; Iniciar automáticamente después de instalar
-Filename: "{app}\print-agent.exe"; Description: "Iniciar PrintAgent RS ahora"; Flags: nowait postinstall runascurrentuser
+; Iniciar automáticamente después de instalar (sin checkbox, siempre arranca)
+Filename: "{app}\print-agent.exe"; Flags: nowait runascurrentuser
 
 [Code]
 var
