@@ -30,41 +30,45 @@ if (Test-Path "resources\SumatraPDF.exe") {
     Write-Host "!!! ADVERTENCIA: No se encontró resources\SumatraPDF.exe. Agrégalo manualmente." -ForegroundColor Yellow
 }
 
-# 4. Copiar plantilla de configuración
-$configExample = "$dist\config.toml.example"
-@"
-# PrintAgent RS — Configuración a prueba de tontos
-ambiente   = "dev"       # dev | test | prod
-id_cliente = "clienteX"
-id_punto   = "puntoY"
-
-# VARIABLES AVANZADAS (Puedes dejarlas, o borrarlas y el sistema usará las fijas)
-broker_url = "mqtt://127.0.0.1"
-broker_port = 1883
-update_url = "https://updates.tudominio.com/print-agent/"
-log_level  = "info"
-"@ | Out-File -FilePath $configExample -Encoding utf8
-
-# 5. Generar config.toml listos para editar
-$configBlank = "$dist\config.toml"
-@"
-# COMPLETA ESTOS DATOS OBLIGATORIOS PARA CONECTAR EL AGENTE
-ambiente   = "prod"   # dev | test | prod
-id_cliente = ""
-id_punto   = ""
-"@ | Out-File -FilePath $configBlank -Encoding utf8
-
-# 6. Generar LEEME.txt con instrucciones de configuracion
+# 4. Generar LEEME.txt con instrucciones para soporte técnico de campo
 $readme = "$dist\LEEME.txt"
 @"
-=== INSTRUCCIONES DE CONFIGURACION PRINTAGENT RS ===
-Para instalar y poner a correr este agente:
-1. Abre 'config.toml' y rellena el ambiente, id_cliente y id_punto.
-2. Si requieres parametros de red avanzados como forzar una nueva URL del broker MQTT para pruebas locales, puedes guiarte leyendo el archivo 'config.toml.example'.
-3. Instala e inicia el Agente en formato de Servicio de Windows usando la ruta de este ejecutable.
+===============================================
+ PRINTAGENT RS - GUIA RAPIDA PARA TECNICOS
+===============================================
+
+INSTALACION:
+  Ejecutar PrintAgentRS_Installer.exe y seguir el asistente.
+  El instalador pedira: Ambiente, ID Cliente e ID Punto.
+  Al finalizar, el agente arranca automaticamente.
+
+EL AGENTE CORRE EN SEGUNDO PLANO:
+  No abre ventana. Buscar el icono en la Bandeja de Sistema
+  (esquina inferior derecha, junto al reloj).
+  Click derecho sobre el icono para ver las opciones.
+
+ARRANQUE CON WINDOWS:
+  El agente se registra automaticamente para iniciar
+  cada vez que el usuario inicie sesion. No hay que
+  configurar nada adicional.
+
+CARPETA DE INSTALACION:
+  %%localappdata%%\PrintAgentRS\
+
+LOGS DE DIAGNOSTICO:
+  %%localappdata%%\PrintAgentRS\logs\
+
+PROBLEMAS FRECUENTES:
+  - El agente no se conecta: Verificar que hay internet
+    y que el broker MQTT esta en linea.
+  - No imprime: Verificar que la impresora esta encendida
+    y configurada como predeterminada en Windows.
+
+  NO MODIFICAR config.toml manualmente.
+  Si necesita cambiar credenciales, reinstale el agente.
 "@ | Out-File -FilePath $readme -Encoding utf8
 
-# 7. Compilar Asistente de Instalación con Inno Setup
+# 5. Compilar Asistente de Instalación con Inno Setup
 $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if (Test-Path $iscc) {
     Write-Host "`n>>> Empaquetando Instalador Inno Setup (.exe)..." -ForegroundColor Cyan
@@ -79,7 +83,7 @@ if (Test-Path $iscc) {
     Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
 }
 
-# 8. Generar manifiesto de versión (version.txt) para Actualizaciones Automáticas (OTA)
+# 6. Generar manifiesto de versión (version.txt) para Actualizaciones Automáticas (OTA)
 $installerPath = "dist\PrintAgentRS_Installer.exe"
 if (Test-Path $installerPath) {
     Write-Host "`n>>> Generando firma OTA (version.txt)..." -ForegroundColor Cyan
