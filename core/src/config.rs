@@ -2,7 +2,7 @@ use std::str::FromStr;
 use serde::Deserialize;
 use anyhow::anyhow;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ambiente {
     Dev,

@@ -66,6 +66,7 @@ pub async fn run(
     cfg: Config,
     plataforma: Arc<dyn Plataforma>,
     mut shutdown_rx: watch::Receiver<bool>,
+    pause_rx: watch::Receiver<bool>,
 ) -> Result<()> {
     let mut opts = MqttOptions::new(cfg.client_id_mqtt(), cfg.broker_url(), cfg.broker_port());
     // Aumentar el límite de payload (20 MB de entrada y salida) para recibir PDFs pesados
@@ -120,6 +121,15 @@ pub async fn run(
                         });
                     }
                     Ok(Event::Incoming(Incoming::Publish(p))) => {
+                        // Las actualizaciones broadcast siempre se procesan, incluso pausado
+                        let es_broadcast = p.topic == topico_broadcast;
+
+                        // Si el agente está pausado, ignorar mensajes de impresión
+                        if !es_broadcast && *pause_rx.borrow() {
+                            tracing::info!("⏸️  Agente PAUSADO. Mensaje ignorado en tópico: {}", p.topic);
+                            continue;
+                        }
+
                         let plataforma = Arc::clone(&plataforma);
                         let client = client.clone();
                         let cfg = cfg.clone();

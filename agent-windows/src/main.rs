@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::watch;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, EnvFilter, prelude::*};
+use agent_core::config::Ambiente;
 
 mod config_loader;
 mod printer_win;
@@ -67,7 +68,10 @@ async fn main() -> Result<()> {
         let _ = shutdown_tx_ctrlc.send(true);
     });
 
-    // ── 6. Iniciar Bandeja de Sistema (System Tray) ──────────────────────────
+    // ── 6. Canal de pausa (solo funcional en Dev/Test) ────────────────────────
+    let (pause_tx, pause_rx) = watch::channel(false);
+
+    // ── 7. Iniciar Bandeja de Sistema (System Tray) ──────────────────────────
     let mut tray = tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("app-icon"))
         .unwrap_or_else(|_| tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("")).unwrap());
     
@@ -76,14 +80,13 @@ async fn main() -> Result<()> {
     
     let _ = tray.inner_mut().add_separator();
     
+    // Reiniciar Agente: siempre visible en todos los ambientes
     let shutdown_tx_tray_re = shutdown_tx.clone();
     let _ = tray.add_menu_item("Reiniciar Agente", move || {
         tracing::info!("Usuario solicitó reinicio. Lanzando nueva copia...");
-        // Clonar el proceso actual independientemente
         let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("print-agent.exe"));
         match std::process::Command::new(exe).spawn() {
             Ok(_) => {
-                // Suicidar la instancia vieja elegantemente
                 let _ = shutdown_tx_tray_re.send(true);
             }
             Err(e) => {
@@ -92,16 +95,33 @@ async fn main() -> Result<()> {
         }
     });
 
-    let shutdown_tx_tray_cl = shutdown_tx.clone();
-    let _ = tray.add_menu_item("Cerrar Agente", move || {
-        tracing::info!("Señal de cierre iniciada por usuario desde Bandeja.");
-        let _ = shutdown_tx_tray_cl.send(true);
-    });
+    // Pausar y Cerrar: solo visibles en Dev y Test (en Prod el cliente no debe poder hacerlo)
+    if cfg.ambiente == Ambiente::Dev || cfg.ambiente == Ambiente::Test {
+        let _ = tray.inner_mut().add_separator();
+
+        let pause_tx_tray = pause_tx.clone();
+        let _ = tray.add_menu_item("⏸ Pausar / ▶ Reanudar", move || {
+            let actualmente_pausado = *pause_tx_tray.borrow();
+            let nuevo_estado = !actualmente_pausado;
+            let _ = pause_tx_tray.send(nuevo_estado);
+            if nuevo_estado {
+                tracing::info!("⏸️  Agente PAUSADO por el usuario. Los mensajes de impresión serán ignorados.");
+            } else {
+                tracing::info!("▶️  Agente REANUDADO por el usuario.");
+            }
+        });
+
+        let shutdown_tx_tray_cl = shutdown_tx.clone();
+        let _ = tray.add_menu_item("Cerrar Agente", move || {
+            tracing::info!("Señal de cierre iniciada por usuario desde Bandeja.");
+            let _ = shutdown_tx_tray_cl.send(true);
+        });
+    }
     
     // Mantener la variable tray viva eludiendo el drop hasta que termine main
     let _tray_keeper = tray;
 
-    mqtt::run(cfg, plataforma, shutdown_rx).await?;
+    mqtt::run(cfg, plataforma, shutdown_rx, pause_rx).await?;
 
     Ok(())
 }
