@@ -14,8 +14,8 @@ $env:RUSTFLAGS = "-C target-feature=+crt-static"
 cargo build --release --package agent-windows --target x86_64-pc-windows-msvc
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "!!! Error en la compilación. Revisa los logs." -ForegroundColor Red
-    exit 1
+  Write-Host "!!! Error en la compilación. Revisa los logs." -ForegroundColor Red
+  exit 1
 }
 
 # 2. Copiar binario generado
@@ -25,16 +25,17 @@ Copy-Item $binPath "$dist\print-agent.exe"
 # 3. Copiar recursos
 Write-Host ">>> Copiando recursos..." -ForegroundColor Cyan
 if (Test-Path "resources\SumatraPDF.exe") {
-    Copy-Item "resources\SumatraPDF.exe" $dist
-} else {
-    Write-Host "!!! ADVERTENCIA: No se encontró resources\SumatraPDF.exe. Agrégalo manualmente." -ForegroundColor Yellow
+  Copy-Item "resources\SumatraPDF.exe" $dist
+}
+else {
+  Write-Host "!!! ADVERTENCIA: No se encontró resources\SumatraPDF.exe. Agrégalo manualmente." -ForegroundColor Yellow
 }
 
 # 4. Generar LEEME.txt con instrucciones para soporte técnico de campo
 $readme = "$dist\LEEME.txt"
 @"
 ===============================================
- PRINTAGENT RS - GUIA RAPIDA PARA TECNICOS
+ Agente AIR - GUIA RAPIDA PARA TECNICOS
 ===============================================
 
 INSTALACION:
@@ -71,30 +72,32 @@ PROBLEMAS FRECUENTES:
 # 5. Compilar Asistente de Instalación con Inno Setup
 $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if (Test-Path $iscc) {
-    Write-Host "`n>>> Empaquetando Instalador Inno Setup (.exe)..." -ForegroundColor Cyan
-    & $iscc .\scripts\installer.iss
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "`n>>> ÉXITO: Instalador generado en dist\PrintAgentRS_Installer.exe" -ForegroundColor Green
-    } else {
-        Write-Host "`n!!! Error al crear el instalador Inno Setup." -ForegroundColor Red
-    }
-} else {
-    Write-Host "!!! ADVERTENCIA: ISCC no encontrado en C:\Program Files (x86)\Inno Setup 6\ISCC.exe." -ForegroundColor Yellow
-    Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
+  Write-Host "`n>>> Empaquetando Instalador Inno Setup (.exe)..." -ForegroundColor Cyan
+  & $iscc .\scripts\installer.iss
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "`n>>> ÉXITO: Instalador generado en dist\PrintAgentRS_Installer.exe" -ForegroundColor Green
+  }
+  else {
+    Write-Host "`n!!! Error al crear el instalador Inno Setup." -ForegroundColor Red
+  }
+}
+else {
+  Write-Host "!!! ADVERTENCIA: ISCC no encontrado en C:\Program Files (x86)\Inno Setup 6\ISCC.exe." -ForegroundColor Yellow
+  Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
 }
 
 # 6. Generar manifiesto de versión (version.txt) para Actualizaciones Automáticas (OTA)
 $installerPath = "dist\PrintAgentRS_Installer.exe"
 if (Test-Path $installerPath) {
-    Write-Host "`n>>> Generando firma OTA (version.txt)..." -ForegroundColor Cyan
-    # Extraemos la version directamente del Cargo.toml de agent-windows usando expresiones regulares
-    $versionMatches = (Get-Content ".\agent-windows\Cargo.toml" -Raw) -match 'version\s*=\s*"([^"]+)"'
-    $versionStr = if ($matches[1]) { $matches[1] } else { "1.0.0" }
+  Write-Host "`n>>> Generando firma OTA (version.txt)..." -ForegroundColor Cyan
+  # Extraemos la version directamente del Cargo.toml de agent-windows usando expresiones regulares
+  $versionMatches = (Get-Content ".\agent-windows\Cargo.toml" -Raw) -match 'version\s*=\s*"([^"]+)"'
+  $versionStr = if ($matches[1]) { $matches[1] } else { "1.0.0" }
     
-    # Hasheo SHA256 estricto del archivo final
-    $hashStr = (Get-FileHash -Path $installerPath -Algorithm SHA256).Hash.ToLower()
+  # Hasheo SHA256 estricto del archivo final
+  $hashStr = (Get-FileHash -Path $installerPath -Algorithm SHA256).Hash.ToLower()
     
-    # Escribir estructura requerida por updater.rs
-    "$versionStr $hashStr" | Out-File -FilePath "dist\version.txt" -Encoding ascii
-    Write-Host ">>> ÉXITO: dist\version.txt generado correctamente (v$versionStr)" -ForegroundColor Green
+  # Escribir estructura requerida por updater.rs
+  "$versionStr $hashStr" | Out-File -FilePath "dist\version.txt" -Encoding ascii
+  Write-Host ">>> ÉXITO: dist\version.txt generado correctamente (v$versionStr)" -ForegroundColor Green
 }

@@ -6,6 +6,7 @@ use tokio::sync::watch;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, EnvFilter, prelude::*};
 use agent_core::config::Ambiente;
+use crate::platform::registrar_app_notificaciones;
 
 mod config_loader;
 mod printer_win;
@@ -16,6 +17,9 @@ use agent_core::mqtt;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // ── 0. Registrar notificaciones ──────────────────────────────────────────
+    registrar_app_notificaciones().expect("Error registrando notificaciones");
+
     // ── 1. Fijar working directory al directorio del ejecutable ──────────────
     let exe_path = std::env::current_exe()?;
     if let Some(parent) = exe_path.parent() {
@@ -46,7 +50,7 @@ async fn main() -> Result<()> {
     tracing::info!(
         client_id = %cfg.client_id_mqtt(),
         ambiente = ?cfg.ambiente,
-        "PrintAgent RS iniciando..."
+        "Agente AIR iniciando..."
     );
 
     // ── 4. Verificar actualizaciones ─────────────────────────────────────────
@@ -72,8 +76,8 @@ async fn main() -> Result<()> {
     let (pause_tx, pause_rx) = watch::channel(false);
 
     // ── 7. Iniciar Bandeja de Sistema (System Tray) ──────────────────────────
-    let mut tray = tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("app-icon"))
-        .unwrap_or_else(|_| tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("")).unwrap());
+    let mut tray = tray_item::TrayItem::new("Agente AIR", tray_item::IconSource::Resource("app-icon"))
+        .unwrap_or_else(|_| tray_item::TrayItem::new("Agente AIR", tray_item::IconSource::Resource("")).unwrap());
     
     let tray_env = format!("AIR: {}", cfg.client_id_mqtt().to_uppercase());
     let _ = tray.add_label(&tray_env);
@@ -110,13 +114,13 @@ async fn main() -> Result<()> {
             if nuevo_estado {
                 tracing::info!("⏸️  Agente PAUSADO por el usuario. Los mensajes de impresión serán ignorados.");
                 let _ = Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title("PrintAgent RS")
+                    .title("Agente AIR")
                     .text1("⏸️ Agente PAUSADO. No procesará impresiones hasta que lo reanudes.")
                     .show();
             } else {
                 tracing::info!("▶️  Agente REANUDADO por el usuario.");
                 let _ = Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title("PrintAgent RS")
+                    .title("Agente AIR")
                     .text1("▶️ Agente REANUDADO. Procesando impresiones normalmente.")
                     .show();
             }

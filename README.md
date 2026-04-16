@@ -1,6 +1,6 @@
-# PrintAgent RS 🚀
+# Agente AIR 🚀
 
-**PrintAgent RS** es un poderoso agente en segundo plano (Daemon) corporativo escrito en Rust. Está diseñado para operar invisiblemente desde la Bandeja de Sistema de Windows, recibir flujos de datos en la nube (MQTT) e imprimir documentos PDF sin interrupción.
+**Agente AIR** es un poderoso agente en segundo plano (Daemon) corporativo escrito en Rust. Está diseñado para operar invisiblemente desde la Bandeja de Sistema de Windows, recibir flujos de datos en la nube (MQTT) e imprimir documentos PDF sin interrupción.
 
 La arquitectura fue rediseñada para ser robusta, auto-actualizable sin intervención técnica, y absolutamente inmune al temido ecosistema de requerimientos de permisos (Cero-UAC).
 

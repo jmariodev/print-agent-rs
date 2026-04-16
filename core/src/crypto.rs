@@ -3,7 +3,7 @@ use aes_gcm::aead::Aead;
 use sha2::{Sha256, Digest};
 use anyhow::{Result, anyhow};
 
-/// Prefijo mágico que identifica un archivo config cifrado por PrintAgent RS.
+/// Prefijo mágico que identifica un archivo config cifrado por Agente AIR.
 /// Si el archivo empieza con este prefijo, el contenido posterior es base64(nonce + ciphertext).
 pub const MAGIC_PREFIX: &str = "PAGENT_ENC:";
 

@@ -5,7 +5,7 @@ use std::path::Path;
 
 const CONFIG_PATH: &str = "config.toml";
 const CONFIG_EJEMPLO: &str = r#"
-# PrintAgent RS — Configuración a prueba de tontos
+# Agente AIR — Configuración a prueba de tontos
 ambiente   = "dev"       # dev | test | prod
 id_cliente = "clienteX"
 id_punto   = "puntoY"

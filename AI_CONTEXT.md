@@ -1,4 +1,4 @@
-# Contexto del Proyecto: PrintAgent RS
+# Contexto del Proyecto: Agente AIR
 
 ## Visión General
 Agente de impresión en Rust que opera como servicio. Recibe comandos por MQTT y ejecuta impresiones PDF usando SumatraPDF (en Windows). Diseñado para ser extensible a plataformas móviles (Android/iOS).

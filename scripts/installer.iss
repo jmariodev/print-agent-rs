@@ -1,8 +1,8 @@
 [Setup]
-AppName=PrintAgent RS
+AppName=Agente AIR
 AppVersion=1.0.0
 DefaultDirName={localappdata}\PrintAgentRS
-DefaultGroupName=PrintAgent RS
+DefaultGroupName=Agente AIR
 OutputDir=..\dist
 OutputBaseFilename=PrintAgentRS_Installer
 Compression=lzma2
@@ -24,8 +24,8 @@ Name: "{app}"; Permissions: users-modify
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PrintAgentRS"; ValueData: """{app}\print-agent.exe"""; Flags: uninsdeletevalue
 
 [Icons]
-Name: "{group}\PrintAgent RS"; Filename: "{app}\print-agent.exe"
-Name: "{group}\Uninstall PrintAgent RS"; Filename: "{uninstallexe}"
+Name: "{group}\Agente AIR"; Filename: "{app}\print-agent.exe"
+Name: "{group}\Uninstall Agente AIR"; Filename: "{uninstallexe}"
 
 [Run]
 ; Iniciar automáticamente después de instalar (sin checkbox, siempre arranca)

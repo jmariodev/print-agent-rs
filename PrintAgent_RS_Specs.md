@@ -1,11 +1,11 @@
-# PrintAgent RS — Especificaciones Técnicas Completas
+# Agente AIR — Especificaciones Técnicas Completas
 > **Archivo de contexto para IA.** Léelo completo antes de escribir cualquier código. Este documento es la fuente de verdad del proyecto.
 
 ---
 
 ## 1. Visión General
 
-**PrintAgent RS** es un agente de impresión escrito en Rust que corre como servicio de Windows. Recibe comandos vía MQTT, lista impresoras disponibles y ejecuta trabajos de impresión de PDFs usando SumatraPDF. Incluye auto-actualización segura y logging estructurado.
+**Agente AIR** es un agente de impresión escrito en Rust que corre como servicio de Windows. Recibe comandos vía MQTT, lista impresoras disponibles y ejecuta trabajos de impresión de PDFs usando SumatraPDF. Incluye auto-actualización segura y logging estructurado.
 
 **Filosofía:** *"Fail fast, recover gracefully"* — el agente **nunca** cuelga en silencio. Todo error se loguea y, si es posible, se notifica vía MQTT.
 
@@ -376,7 +376,7 @@ use std::path::Path;
 
 const CONFIG_PATH: &str = "config.toml";
 const CONFIG_EJEMPLO: &str = r#"
-# PrintAgent RS — Configuración
+# Agente AIR — Configuración
 broker_url     = "mqtt://192.168.1.100:1883"
 client_id_mqtt = "sucursal-nombre-01"
 ambiente       = "prod"   # dev | test | prod
@@ -682,7 +682,7 @@ async fn main() -> Result<()> {
     tracing::info!(
         client_id = %cfg.client_id_mqtt,
         ambiente = ?cfg.ambiente,
-        "PrintAgent RS iniciando..."
+        "Agente AIR iniciando..."
     );
 
     // ── 4. Verificar actualizaciones ─────────────────────────────────────────

@@ -1,6 +1,6 @@
 # 📱 Plan de Expansión Estratégica: Ecosistema Móvil Cross-Platform
 
-Este documento detalla la arquitectura oficial a seguir para el futuro desarrollo de **PrintAgent RS Móvil** (Android/iOS), garantizando la reutilización algorítmica y maximizando la eficiencia de batería en los teléfonos y pasarelas de pago POS.
+Este documento detalla la arquitectura oficial a seguir para el futuro desarrollo de **Agente AIR Móvil** (Android/iOS), garantizando la reutilización algorítmica y maximizando la eficiencia de batería en los teléfonos y pasarelas de pago POS.
 
 > [!IMPORTANT]
 > **Pilar Arquitectónico**: La aplicación actual heredará al 100% sus entrañas. No reescribiremos lógica concurrente ni enrutamiento. La meta es inyectar un cascarón cross-platform (Kotlin) que invoque estáticamente al núcleo nativo (Rust).
