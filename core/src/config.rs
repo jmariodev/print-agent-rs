@@ -117,7 +117,7 @@ impl Config {
     pub fn update_url_for(&self, target_env: &str) -> String {
         self.update_url
             .clone()
-            .unwrap_or_else(|| format!("http://localhost:8000/print-agent/{}/", target_env))
+            .unwrap_or_else(|| format!("https://www.gamasoftcol.com/ActualizadorAIR/{}/", target_env))
     }
 }
 
