@@ -42,6 +42,15 @@ pub fn registrar_app_notificaciones() -> Result<()> {
     Ok(())
 }
 
+pub fn mostrar_notificacion_local(titulo: &str, mensaje: &str) {
+    let _ = Toast::new(MI_APP_ID)
+        .title(titulo)
+        .text1(mensaje)
+        .sound(Some(Sound::SMS))
+        .duration(Duration::Short)
+        .show();
+}
+
 #[async_trait]
 impl Plataforma for WindowsPlatform {
     async fn listar_impresoras(&self) -> Result<Vec<String>> {
@@ -73,12 +82,7 @@ impl Plataforma for WindowsPlatform {
 
     // dentro del impl Plataforma
     async fn mostrar_notificacion(&self, titulo: &str, mensaje: &str) -> Result<()> {
-        Toast::new(MI_APP_ID)
-            .title(titulo)
-            .text1(mensaje)
-            .sound(Some(Sound::SMS))
-            .duration(Duration::Short)
-            .show()?;
+        mostrar_notificacion_local(titulo, mensaje);
         Ok(())
     }
 }

@@ -106,23 +106,16 @@ async fn main() -> Result<()> {
 
         let pause_tx_tray = pause_tx.clone();
         let _ = tray.add_menu_item("⏸ Pausar / ▶ Reanudar", move || {
-            use tauri_winrt_notification::Toast;
-
             let actualmente_pausado = *pause_tx_tray.borrow();
             let nuevo_estado = !actualmente_pausado;
             let _ = pause_tx_tray.send(nuevo_estado);
+
             if nuevo_estado {
                 tracing::info!("⏸️  Agente PAUSADO por el usuario. Los mensajes de impresión serán ignorados.");
-                let _ = Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title("Agente AIR")
-                    .text1("⏸️ Agente PAUSADO. No procesará impresiones hasta que lo reanudes.")
-                    .show();
+                crate::platform::mostrar_notificacion_local("Agente AIR", "⏸️ Agente PAUSADO. No procesará impresiones hasta que lo reanudes.");
             } else {
                 tracing::info!("▶️  Agente REANUDADO por el usuario.");
-                let _ = Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title("Agente AIR")
-                    .text1("▶️ Agente REANUDADO. Procesando impresiones normalmente.")
-                    .show();
+                crate::platform::mostrar_notificacion_local("Agente AIR", "▶️ Agente REANUDADO. Procesando impresiones normalmente.");
             }
         });
 
