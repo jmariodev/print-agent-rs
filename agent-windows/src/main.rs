@@ -75,8 +75,9 @@ async fn main() -> Result<()> {
     let mut tray = tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("app-icon"))
         .unwrap_or_else(|_| tray_item::TrayItem::new("PrintAgent RS", tray_item::IconSource::Resource("")).unwrap());
     
-    let tray_env = format!("PrintAgent: {:?}", cfg.ambiente);
+    let tray_env = format!("AIR: {}", cfg.client_id_mqtt().to_uppercase());
     let _ = tray.add_label(&tray_env);
+    let _ = tray.add_label(&format!("VERSION: {}", VERSION_ACTUAL));
     
     let _ = tray.inner_mut().add_separator();
     
