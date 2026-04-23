@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "agent-windows"
-version = "26.1.7"
+version = "26.0.9"
 dependencies = [
  "agent-core",
  "anyhow",

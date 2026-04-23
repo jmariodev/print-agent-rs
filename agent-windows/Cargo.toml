@@ -1,6 +1,6 @@
 [package]
 name = "agent-windows"
-version = "26.1.7"
+version = "26.0.9"
 edition = "2024"
 
 [dependencies]
@@ -11,13 +11,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 pdfium-render = { version = "0.8", features = ["thread_safe"] }
-windows = { version = "0.58", features = [
-    "Win32_Graphics_Gdi",
-    "Win32_Graphics_Printing",
-    "Win32_Foundation",
-    "Win32_System_Com",
-    "Win32_Storage_Xps",
-] }
+windows = { version = "0.58", features = ["Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Foundation", "Win32_System_Com", "Win32_Storage_Xps"] }
 windows-service = "0.7"
 toml = "0.8"
 async-trait = "0.1.89"

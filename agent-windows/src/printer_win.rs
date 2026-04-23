@@ -1,9 +1,6 @@
 use anyhow::{Result, Context, bail};
 use tracing::{info, warn};
 
-use std::os::windows::process::CommandExt;
-use tokio::process::Command;
-
 use windows::core::{HSTRING, PCWSTR, PWSTR};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Graphics::Gdi::*;
@@ -11,37 +8,55 @@ use windows::Win32::Storage::Xps::*;
 use windows::Win32::Graphics::Printing::*;
 use pdfium_render::prelude::*;
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 // Mutex global para garantizar que las impresiones no se solapen si llegan muy rápido por MQTT.
 static PRINT_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// Lista las impresoras instaladas en el sistema usando WMIC.
+/// Lista las impresoras instaladas en el sistema usando la API nativa de Windows (EnumPrintersW).
+/// Esto evita depender de PowerShell o procesos externos (WMIC), mejorando el rendimiento a milisegundos.
 pub async fn listar_impresoras_win() -> Result<Vec<String>> {
-    let mut std_cmd = std::process::Command::new("wmic");
-    std_cmd.args(["printer", "get", "name"]);
-    std_cmd.creation_flags(CREATE_NO_WINDOW);
+    unsafe {
+        let flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
+        let mut cb_needed = 0;
+        let mut c_returned = 0;
 
-    let mut tokio_cmd = Command::from(std_cmd);
+        // Primera llamada para obtener tamaño necesario en bytes
+        let _ = EnumPrintersW(flags, PCWSTR::null(), 4, None, &mut cb_needed, &mut c_returned);
 
-    let output = tokio_cmd
-        .output()
-        .await
-        .context("Falló al ejecutar wmic para listar impresoras")?;
+        if cb_needed == 0 {
+            return Ok(Vec::new());
+        }
 
-    if !output.status.success() {
-        bail!("wmic terminó con código de error");
+        let mut buf: Vec<u8> = vec![0; cb_needed as usize];
+
+        if EnumPrintersW(
+            flags,
+            PCWSTR::null(),
+            4,
+            Some(buf.as_mut_slice()),
+            &mut cb_needed,
+            &mut c_returned,
+        ).is_err() {
+            bail!("Error nativo al listar impresoras con EnumPrintersW");
+        }
+
+        let printers = std::slice::from_raw_parts(
+            buf.as_ptr() as *const PRINTER_INFO_4W,
+            c_returned as usize,
+        );
+
+        let mut nombres = Vec::new();
+        for printer in printers {
+            if !printer.pPrinterName.is_null() {
+                if let Ok(nombre) = printer.pPrinterName.to_string() {
+                    if !nombre.is_empty() {
+                        nombres.push(nombre);
+                    }
+                }
+            }
+        }
+
+        Ok(nombres)
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let impresoras: Vec<String> = stdout
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty() && l.to_lowercase() != "name")
-        .collect();
-
-    Ok(impresoras)
 }
 
 /// Imprime un PDF (vía GDI) y luego envía el corte (vía Spooler RAW).
