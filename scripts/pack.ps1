@@ -24,11 +24,11 @@ Copy-Item $binPath "$dist\print-agent.exe"
 
 # 3. Copiar recursos
 Write-Host ">>> Copiando recursos..." -ForegroundColor Cyan
-if (Test-Path "resources\SumatraPDF.exe") {
-  Copy-Item "resources\SumatraPDF.exe" $dist
+if (Test-Path "resources\pdfium.dll") {
+  Copy-Item "resources\pdfium.dll" $dist
 }
 else {
-  Write-Host "!!! ADVERTENCIA: No se encontró resources\SumatraPDF.exe. Agrégalo manualmente." -ForegroundColor Yellow
+  Write-Host "!!! ADVERTENCIA: No se encontró resources\pdfium.dll. Agrégalo manualmente." -ForegroundColor Yellow
 }
 
 # 4. Generar LEEME.txt con instrucciones para soporte técnico de campo
