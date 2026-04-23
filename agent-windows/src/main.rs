@@ -100,6 +100,14 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Ver Logs: siempre visible, abre la carpeta de logs en Windows Explorer
+    let _ = tray.add_menu_item("Ver Logs", move || {
+        tracing::info!("Abriendo carpeta de logs...");
+        let _ = std::process::Command::new("explorer")
+            .arg("logs")
+            .spawn();
+    });
+
     // Pausar y Cerrar: solo visibles en Dev y Test (en Prod el cliente no debe poder hacerlo)
     if cfg.ambiente == Ambiente::Dev || cfg.ambiente == Ambiente::Test {
         let _ = tray.inner_mut().add_separator();
