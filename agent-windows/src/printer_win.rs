@@ -120,14 +120,25 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
             let render_config = PdfRenderConfig::new().set_target_width(ancho_px);
             let bitmap = page.render_with_config(&render_config).context("Fallo render")?;
 
+            let bgra_bytes = bitmap.as_raw_bytes();
             let bmp_w = bitmap.width() as i32;
             let bmp_h = bitmap.height() as i32;
+
+            // Invertimos las filas manualmente (Bottom-Up) para que sea compatible con el 100%
+            // de los drivers de Windows, incluyendo impresoras antiguas o genéricas (como SAT o Xprinter).
+            let mut flipped_bytes = Vec::with_capacity(bgra_bytes.len());
+            let row_size = (bmp_w * 4) as usize;
+            for row in (0..bmp_h).rev() {
+                let start = (row as usize) * row_size;
+                let end = start + row_size;
+                flipped_bytes.extend_from_slice(&bgra_bytes[start..end]);
+            }
 
             let bmi = BITMAPINFO {
                 bmiHeader: BITMAPINFOHEADER {
                     biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
                     biWidth: bmp_w,
-                    biHeight: -bmp_h, // top-down
+                    biHeight: bmp_h, // POSITIVO = Bottom-Up (Máxima compatibilidad)
                     biPlanes: 1,
                     biBitCount: 32,
                     biCompression: BI_RGB.0,
@@ -142,7 +153,7 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
 
             StretchDIBits(
                 hdc, 0, 0, bmp_w, bmp_h, 0, 0, bmp_w, bmp_h,
-                Some(bitmap.as_raw_bytes().as_ptr() as *const std::ffi::c_void),
+                Some(flipped_bytes.as_ptr() as *const std::ffi::c_void),
                 &bmi, DIB_RGB_COLORS, SRCCOPY,
             );
 
