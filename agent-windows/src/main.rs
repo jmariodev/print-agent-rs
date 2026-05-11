@@ -107,8 +107,53 @@ async fn main() -> Result<()> {
             .spawn();
     });
 
-    // Pausar y Cerrar: solo visibles en Dev y Test (en Prod el cliente no debe poder hacerlo)
+
+
+    // Opciones administrativas: solo visibles en Dev y Test (en Prod el cliente no debe poder hacerlo)
     if cfg.ambiente.is_dev_or_test() {
+        let _ = tray.inner_mut().add_separator();
+
+        // Cambiar Configuración: descifra temporalmente si es necesario y abre notepad
+        let exe_dir_cfg = exe_path.parent().unwrap().to_path_buf();
+        let _ = tray.add_menu_item("Cambiar Configuración", move || {
+            tracing::info!("Abriendo archivo de configuración...");
+            let config_path = exe_dir_cfg.join("config.toml");
+            if let Ok(contenido) = std::fs::read_to_string(&config_path) {
+                if agent_core::crypto::esta_cifrado(&contenido) {
+                    if let Ok(descifrado) = agent_core::crypto::descifrar(&contenido) {
+                        let _ = std::fs::write(&config_path, descifrado);
+                    }
+                }
+            }
+            let _ = std::process::Command::new("notepad.exe")
+                .arg(config_path.to_str().unwrap_or("config.toml"))
+                .spawn();
+                
+            crate::platform::mostrar_notificacion_local(
+                "Modo Edición", 
+                "Guarda los cambios en el bloc de notas y haz clic en 'Reiniciar Agente' para aplicar y asegurar la configuración."
+            );
+        });
+
+        // Desinstalar Agente
+        let exe_dir_unins = exe_path.parent().unwrap().to_path_buf();
+        let shutdown_tx_tray_unins = shutdown_tx.clone();
+        let _ = tray.add_menu_item("Desinstalar Agente", move || {
+            tracing::info!("Iniciando desinstalador...");
+            let unins_path = exe_dir_unins.join("unins000.exe");
+            if unins_path.exists() {
+                let _ = std::process::Command::new(&unins_path).spawn();
+                // Cerrar el agente inmediatamente para que el desinstalador 
+                // no se suicide al hacer taskkill /T al agente (su padre).
+                let _ = shutdown_tx_tray_unins.send(true);
+            } else {
+                crate::platform::mostrar_notificacion_local(
+                    "Error", 
+                    "No se encontró el desinstalador (unins000.exe)."
+                );
+            }
+        });
+
         let _ = tray.inner_mut().add_separator();
 
         let pause_tx_tray = pause_tx.clone();

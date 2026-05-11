@@ -23,6 +23,10 @@ Name: "{app}"; Permissions: users-modify
 ; Agregar la llave para arrancar con Windows cada vez que el usuario inicie sesión
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PrintAgentRS"; ValueData: """{app}\print-agent.exe"""; Flags: uninsdeletevalue
 
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\*"
+Type: dirifempty; Name: "{app}"
+
 [Icons]
 Name: "{group}\Agente AIR"; Filename: "{app}\print-agent.exe"
 Name: "{group}\Uninstall Agente AIR"; Filename: "{uninstallexe}"
@@ -68,6 +72,41 @@ begin
   begin
     // Asesinar antes de desinstalar para evitar bloqueos
     Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+// Esta función valida que no se dejen campos vacíos si es una instalación limpia
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  
+  // Si estamos en nuestra página personalizada
+  if CurPageID = ConfigPage.ID then
+  begin
+    // Validar SOLO si es una instalación desde cero (no hay config.toml)
+    if not FileExists(ExpandConstant('{app}\config.toml')) then
+    begin
+      if (Trim(ConfigPage.Values[0]) = '') or (Trim(ConfigPage.Values[1]) = '') or (Trim(ConfigPage.Values[2]) = '') then
+      begin
+        MsgBox('Todos los campos (Ambiente, ID Cliente e ID Punto) son OBLIGATORIOS para una instalación nueva.', mbError, MB_OK);
+        Result := False;
+      end;
+    end;
+  end;
+end;
+
+// Esta función decide si se debe saltar una página del instalador
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  
+  // Si es la página de configuración y ya existe un config.toml, la saltamos para no confundir al usuario
+  if PageID = ConfigPage.ID then
+  begin
+    if FileExists(ExpandConstant('{app}\config.toml')) then
+    begin
+      Result := True;
+    end;
   end;
 end;
 
