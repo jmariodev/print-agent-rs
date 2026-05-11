@@ -3,22 +3,53 @@ use serde::Deserialize;
 use anyhow::anyhow;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Ambiente {
-    Dev,
-    Test,
-    Prod,
+#[serde(try_from = "String")]
+pub struct Ambiente(pub String);
+
+impl TryFrom<String> for Ambiente {
+    type Error = anyhow::Error;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        let lower = s.to_lowercase();
+        if lower == "dev" || lower == "test" || lower.starts_with("prod") {
+            Ok(Ambiente(lower))
+        } else {
+            Err(anyhow!("Ambiente inválido: '{}'. Usar dev|test|prod|prod_*", s))
+        }
+    }
 }
 
 impl FromStr for Ambiente {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "dev"  => Ok(Ambiente::Dev),
-            "test" => Ok(Ambiente::Test),
-            "prod" => Ok(Ambiente::Prod),
-            other  => Err(anyhow!("Ambiente inválido: '{}'. Usar dev|test|prod", other)),
+        s.to_string().try_into()
+    }
+}
+
+impl Ambiente {
+    pub fn is_prod(&self) -> bool {
+        self.0.starts_with("prod")
+    }
+
+    pub fn is_dev_or_test(&self) -> bool {
+        self.0 == "dev" || self.0 == "test"
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn base_env(&self) -> &str {
+        if self.is_prod() {
+            "prod"
+        } else {
+            self.as_str()
         }
+    }
+}
+
+impl std::fmt::Display for Ambiente {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -35,18 +66,15 @@ pub struct Config {
 
 impl Config {
     pub fn topic_subscripcion(&self) -> String {
-        let env_str = format!("{:?}", self.ambiente).to_lowercase();
-        format!("{}-{}-{}-imp-local", env_str, self.id_cliente, self.id_punto)
+        format!("{}-{}-{}-imp-local", self.ambiente.as_str(), self.id_cliente, self.id_punto)
     }
 
     pub fn client_id_mqtt(&self) -> String {
-        let env_str = format!("{:?}", self.ambiente).to_lowercase();
-        format!("{}-{}-{}", env_str, self.id_cliente, self.id_punto)
+        format!("{}-{}-{}", self.ambiente.as_str(), self.id_cliente, self.id_punto)
     }
 
     pub fn topic_broadcast_update(&self) -> String {
-        let env_str = format!("{:?}", self.ambiente).to_lowercase();
-        format!("update-air-{}", env_str)
+        format!("update-air-{}", self.ambiente.base_env())
     }
 
     pub fn is_wss(&self) -> bool {

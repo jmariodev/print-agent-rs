@@ -51,7 +51,7 @@ Sube únicamente esos dos archivos resultantes a tu servidor web privado y ¡est
 La arquitectura de conectividad es dual. Tienes **tópicos masivos** para administración global, y **tópicos locales** transaccionales.
 
 ### 1. Actualización Silenciosa Global (Broadcast)
-El canal general escucha en modo fire-and-forget: `update-air-{ambiente}` (ej: `update-air-dev`).
+El canal general escucha en modo fire-and-forget: `update-air-{ambiente}` (ej: `update-air-dev`, `update-air-prod`).
 Si envías un mensaje MQTT a ese topic, 1,000 computadores esparcidos en el país se actualizarán simultáneamente al servidor, reiniciándose en silencio en menos de 5 segundos.
 
 ### 2. Transaccional de Impresión y Listado

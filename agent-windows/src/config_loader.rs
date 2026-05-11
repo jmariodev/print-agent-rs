@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
-use agent_core::config::{Config, Ambiente};
+use agent_core::config::Config;
 use agent_core::crypto;
 use std::path::Path;
 
 const CONFIG_PATH: &str = "config.toml";
 const CONFIG_EJEMPLO: &str = r#"
 # Agente AIR — Configuración a prueba de tontos
-ambiente   = "dev"       # dev | test | prod
+ambiente   = "dev"       # dev | test | prod | prod_*
 id_cliente = "clienteX"
 id_punto   = "puntoY"
 
@@ -50,7 +50,7 @@ pub fn cargar_config() -> Result<Config> {
     // ── Auto-cifrado para Producción ──────────────────────────────────────
     // Si es Prod y el archivo estaba en texto plano, cifrarlo automáticamente
     // para que el técnico no pueda leerlo ni modificarlo a partir de ahora.
-    if cfg.ambiente == Ambiente::Prod && !crypto::esta_cifrado(&contenido) {
+    if cfg.ambiente.is_prod() && !crypto::esta_cifrado(&contenido) {
         match crypto::cifrar(&texto_toml) {
             Ok(cifrado) => {
                 if let Err(e) = std::fs::write(path, &cifrado) {

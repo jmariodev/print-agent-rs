@@ -94,17 +94,17 @@ use anyhow::anyhow;
 pub enum Ambiente {
     Dev,
     Test,
-    Prod,
+    Prod(String), // Accepts prod, prod_gd4, etc. dynamically
 }
 
 impl FromStr for Ambiente {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "dev"  => Ok(Ambiente::Dev),
-            "test" => Ok(Ambiente::Test),
-            "prod" => Ok(Ambiente::Prod),
-            other  => Err(anyhow!("Ambiente inválido: '{}'. Usar dev|test|prod", other)),
+        let lower = s.to_lowercase();
+        if lower == "dev" || lower == "test" || lower.starts_with("prod") {
+            Ok(Ambiente(lower))
+        } else {
+            Err(anyhow!("Ambiente inválido: '{}'. Usar dev|test|prod|prod_*", s))
         }
     }
 }
@@ -379,7 +379,7 @@ const CONFIG_EJEMPLO: &str = r#"
 # Agente AIR — Configuración
 broker_url     = "mqtt://192.168.1.100:1883"
 client_id_mqtt = "sucursal-nombre-01"
-ambiente       = "prod"   # dev | test | prod
+ambiente       = "prod"   # dev | test | prod | prod_*
 update_url     = "https://updates.tudominio.com/print-agent/"
 log_level      = "info"   # debug | info | warn
 "#;

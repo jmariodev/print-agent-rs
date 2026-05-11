@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::watch;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, EnvFilter, prelude::*};
-use agent_core::config::Ambiente;
 use crate::platform::registrar_app_notificaciones;
 
 mod config_loader;
@@ -55,7 +54,7 @@ async fn main() -> Result<()> {
 
     // ── 4. Verificar actualizaciones ─────────────────────────────────────────
     const VERSION_ACTUAL: &str = env!("CARGO_PKG_VERSION");
-    let env_str = format!("{:?}", cfg.ambiente).to_lowercase();
+    let env_str = cfg.ambiente.base_env();
     if let Err(e) = agent_core::updater::verificar_y_descargar(&cfg.update_url_for(&env_str), VERSION_ACTUAL).await {
         tracing::warn!("Error en verificación de actualización: {}", e);
     }
@@ -109,7 +108,7 @@ async fn main() -> Result<()> {
     });
 
     // Pausar y Cerrar: solo visibles en Dev y Test (en Prod el cliente no debe poder hacerlo)
-    if cfg.ambiente == Ambiente::Dev || cfg.ambiente == Ambiente::Test {
+    if cfg.ambiente.is_dev_or_test() {
         let _ = tray.inner_mut().add_separator();
 
         let pause_tx_tray = pause_tx.clone();

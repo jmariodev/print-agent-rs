@@ -46,7 +46,7 @@ begin
     'El agente necesita esta información para conectarse e identificarse en el servidor MQTT.');
 
   // Añadir campos (IDs)
-  ConfigPage.Add('Ambiente (Ej: Dev, Test, Prod):', False);
+  ConfigPage.Add('Ambiente (Ej: Dev, Test, Prod, Prod_GD4):', False);
   ConfigPage.Add('ID Cliente (Ej: 118):', False);
   ConfigPage.Add('ID Punto (Ej: 285):', False);
   
