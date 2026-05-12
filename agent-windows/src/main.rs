@@ -47,10 +47,44 @@ async fn main() -> Result<()> {
         .init();
 
     tracing::info!(
+        version = %env!("CARGO_PKG_VERSION"),
         client_id = %cfg.client_id_mqtt(),
-        ambiente = ?cfg.ambiente,
-        "Agente AIR iniciando..."
+        "🚀 >>> INICIANDO AGENTE AIR <<<"
     );
+
+    // --- TRAZABILIDAD: Identificar si venimos de una resurrección ---
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--revived") {
+        tracing::warn!("🧟 REANIMACIÓN: El Agente ha sido levantado por el Guardián tras un cierre inesperado.");
+    }
+
+    // --- PROTECCIÓN MUTUA: Lanzar o asegurar que el Guardián esté vivo ---
+    let exe_path = std::env::current_exe().unwrap();
+    let exe_dir = exe_path.parent().unwrap();
+    let vbs_path = exe_dir.join("lanzador.vbs");
+    
+    if vbs_path.exists() {
+        // --- LIMPIEZA: Borrar candado de parada previo si existe ---
+        let stop_lock = exe_dir.join("stop.lock");
+        if stop_lock.exists() {
+            let _ = std::fs::remove_file(&stop_lock);
+            tracing::debug!("🔓 Sesión previa desbloqueada.");
+        }
+
+        // Intentamos lanzar el script. Gracias a su candado interno, 
+        // si ya está corriendo, la nueva instancia se cerrará sola.
+        match std::process::Command::new("wscript.exe")
+            .arg(vbs_path.to_str().unwrap_or("lanzador.vbs"))
+            .current_dir(exe_dir)
+            .spawn() 
+        {
+            Ok(_) => tracing::info!("🛡️ Protección de Alta Disponibilidad: ACTIVA"),
+            Err(e) => tracing::error!("❌ Fallo al activar el Guardián VBScript: {}", e),
+        }
+    } else {
+        tracing::warn!("⚠️ Guardián (lanzador.vbs) no encontrado. La protección está desactivada.");
+    }
+    // -------------------------------------------------------------------
 
     // ── 4. Verificar actualizaciones ─────────────────────────────────────────
     const VERSION_ACTUAL: &str = env!("CARGO_PKG_VERSION");
@@ -87,16 +121,8 @@ async fn main() -> Result<()> {
     // Reiniciar Agente: siempre visible en todos los ambientes
     let shutdown_tx_tray_re = shutdown_tx.clone();
     let _ = tray.add_menu_item("Reiniciar Agente", move || {
-        tracing::info!("Usuario solicitó reinicio. Lanzando nueva copia...");
-        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("print-agent.exe"));
-        match std::process::Command::new(exe).spawn() {
-            Ok(_) => {
-                let _ = shutdown_tx_tray_re.send(true);
-            }
-            Err(e) => {
-                tracing::error!("No se pudo reiniciar el Agente: {}", e);
-            }
-        }
+        tracing::info!("Usuario solicitó reinicio. Cerrando agente para que el guardián lo reviva...");
+        let _ = shutdown_tx_tray_re.send(true);
     });
 
     // Ver Logs: siempre visible, abre la carpeta de logs en Windows Explorer
@@ -142,6 +168,8 @@ async fn main() -> Result<()> {
             tracing::info!("Iniciando desinstalador...");
             let unins_path = exe_dir_unins.join("unins000.exe");
             if unins_path.exists() {
+                // Escribir stop.lock para desactivar el guardián y que no nos reviva
+                let _ = std::fs::write(exe_dir_unins.join("stop.lock"), "stop");
                 let _ = std::process::Command::new(&unins_path).spawn();
                 // Cerrar el agente inmediatamente para que el desinstalador 
                 // no se suicide al hacer taskkill /T al agente (su padre).
@@ -172,8 +200,11 @@ async fn main() -> Result<()> {
         });
 
         let shutdown_tx_tray_cl = shutdown_tx.clone();
+        let exe_dir_cl = exe_path.parent().unwrap().to_path_buf();
         let _ = tray.add_menu_item("Cerrar Agente", move || {
             tracing::info!("Señal de cierre iniciada por usuario desde Bandeja.");
+            // Escribir stop.lock para desactivar el guardián permanentemente
+            let _ = std::fs::write(exe_dir_cl.join("stop.lock"), "stop");
             let _ = shutdown_tx_tray_cl.send(true);
         });
     }

@@ -32,7 +32,7 @@ Name: "{group}\Agente AIR"; Filename: "{app}\print-agent.exe"
 Name: "{group}\Uninstall Agente AIR"; Filename: "{uninstallexe}"
 
 [Run]
-; Iniciar automáticamente después de instalar (sin checkbox, siempre arranca)
+; Iniciar automáticamente el script guardián después de instalar usando el intérprete de Windows
 Filename: "{app}\print-agent.exe"; Flags: nowait runascurrentuser
 
 [Code]
@@ -59,6 +59,12 @@ begin
   ConfigPage.Values[1] := '';
   ConfigPage.Values[2] := '';
 
+  // Desactivar cualquier guardián previo
+  if DirExists(ExpandConstant('{localappdata}\PrintAgentRS')) then
+  begin
+    SaveStringToFile(ExpandConstant('{localappdata}\PrintAgentRS\stop.lock'), 'stop', False);
+  end;
+
   // Asesinar silenciosamente cualquier instancia rebelde o zombie del agente antes de instalar
   Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
@@ -70,6 +76,8 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    // Escribir stop.lock para asegurar que el guardián no lo reviva durante desinstalación
+    SaveStringToFile(ExpandConstant('{app}\stop.lock'), 'stop', False);
     // Asesinar antes de desinstalar para evitar bloqueos
     Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
@@ -114,7 +122,33 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   TomlLines: TArrayOfString;
+  VbsLines: TArrayOfString;
 begin
+  // Creamos el script en ssInstall para que esté listo ANTES del arranque post-instalación
+  if CurStep = ssInstall then
+  begin
+    // Generar Guardián VBScript con Protección Mutua y Bajo Consumo (Polling)
+    SetArrayLength(VbsLines, 17);
+    VbsLines[0] := 'Set fso = CreateObject("Scripting.FileSystemObject")';
+    VbsLines[1] := 'Set shell = WScript.CreateObject("WScript.Shell")';
+    VbsLines[2] := 'strDir = fso.GetParentFolderName(WScript.ScriptFullName)';
+    VbsLines[3] := 'shell.CurrentDirectory = strDir';
+    VbsLines[4] := '';
+    VbsLines[5] := 'On Error Resume Next';
+    VbsLines[6] := 'Set lockFile = fso.OpenTextFile("guardian.lock", 2, True)';
+    VbsLines[7] := 'If Err.Number <> 0 Then WScript.Quit';
+    VbsLines[8] := 'On Error GoTo 0';
+    VbsLines[9] := '';
+    VbsLines[10] := 'Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")';
+    VbsLines[11] := 'Do';
+    VbsLines[12] := '  If fso.FileExists("stop.lock") Then Exit Do';
+    VbsLines[13] := '  Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process Where Name = ''print-agent.exe''")';
+    VbsLines[14] := '  If colProcesses.Count = 0 Then shell.Run "print-agent.exe --revived", 0, False';
+    VbsLines[15] := '  WScript.Sleep 2000';
+    VbsLines[16] := 'Loop';
+    SaveStringsToFile(ExpandConstant('{app}\lanzador.vbs'), VbsLines, False);
+  end;
+
   if CurStep = ssPostInstall then
   begin
     // Si el config.toml ya existe (ej: actualización silenciosa OTA), lo respetamos absolutamente
