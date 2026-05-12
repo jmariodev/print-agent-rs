@@ -1,62 +1,186 @@
-# 📱 Plan de Expansión Estratégica: Ecosistema Móvil Cross-Platform
+# Plan de Expansión a Android/iOS
 
-Este documento detalla la arquitectura oficial a seguir para el futuro desarrollo de **Agente AIR Móvil** (Android/iOS), garantizando la reutilización algorítmica y maximizando la eficiencia de batería en los teléfonos y pasarelas de pago POS.
-
-> [!IMPORTANT]
-> **Pilar Arquitectónico**: La aplicación actual heredará al 100% sus entrañas. No reescribiremos lógica concurrente ni enrutamiento. La meta es inyectar un cascarón cross-platform (Kotlin) que invoque estáticamente al núcleo nativo (Rust).
+Hoja de ruta para extender Agente AIR al ecosistema móvil, reutilizando el núcleo Rust existente.
 
 ---
 
-## 1. El Santo Grial: El Stack Tecnológico (Rust + UniFFI + KMP)
+## Fundamento Arquitectónico
 
-### Componente A: El Núcleo Back-End (`agent-core`)
-Seguirá siendo la única fuente de verdad sobre cómo los datos viajan:
-- Contendrá la persistencia, conexión a la Nube (Broker MQTT) a través de `rumqttc`, y los Handlers de serialización JSON.
-- **Acción:** Apagar quirúrgicamente el actualizador autómata OTA (`#[cfg(target_os="windows")]` sobre `updater.rs`), ya que la Apple AppStore y Google Play Store imponen sus propias reglas de actualización binaria anti-malware.
+El proyecto ya está diseñado para esto. El trait `Plataforma` en `core/src/traits.rs` es el contrato que separa la lógica de negocio (MQTT, cifrado, OTA) de la implementación de plataforma (Win32, Android PrintManager, etc.).
 
-### Componente B: El "Cable" de Traducción (`UniFFI`)
-El ecosistema de Mozilla incluye **`uniffi`**, un generador de bindings automáticos.
-- **Acción:** Crearemos el Crate `agent-mobile`. Este Crate usará `uniffi` para leer el código de Rust y vomitar un archivo 100% compatible con Kotlin (Android) y Swift (iOS LLVM).
+**Lo que se reutiliza sin cambios (~70% del trabajo):**
+- `core/src/mqtt.rs` — Event loop MQTT completo
+- `core/src/config.rs` — Tipos `Config` y `Ambiente`
+- `core/src/crypto.rs` — AES-256-GCM
+- `core/src/messages.rs` — Comandos serde
 
-### Componente C: El Front-End Multiplataforma (KMP)
-- Se escribirá la interfaz visual unificada con **Kotlin Multiplatform (Compose)**.
-- Se implementará un **Foreground Service** móvil clavado en la barra de Android (para que el sistema operativo no mate la aplicación por ahorrar batería), el cual instanciará las lógicas que arroje Rust.
-
----
-
-## 2. Flujo de Trabajo en el Día a Día (CI/CD Pipeline)
-
-Al desactivar las instalaciones silenciosas clandestinas de Windows (OTA), el ciclo de actualización de un dispositivo móvil se basará estrictamente en empaquetar Nuevos `APKs` (o `AABs`) para desplegar en las tiendas.
-
-Para no hacer el proceso traumático y manual, montaremos una "Línea de Ensamblaje Robótica" **(CI/CD Pipeline)** usando herramientas gratuitas como *GitHub Actions*.
-
-### Así será el proceso automatizado cuando desees hacer un cambio:
-1. **Modificas Rust (El Back):** Editas una regla matemática en `agent-core` desde tu computadora y haces un "Push" a tu nube de código (GitHub).
-2. **El Servidor Ensambla los Binarios:**  
-   Un robot en la nube automáticamente corre el comando de compilación remota (`cargo build --target aarch64-linux-android`) que escupe los archivos ocultos `.so` (librerías puras).
-3. **El Servidor Compila KMP (El Front):** 
-   Ese mismo robot inyecta automáticamente los `.so` en las carpetas `/jniLibs` de tu proyecto de Kotlin (Android Studio Virtual) y genera las traducciones puente.
-4. **Emisión y Distribución:**  
-   Inmediatamente el robot compila el proyecto completo de KMP, escupiendo un `App_v2.apk` listo para usarse. Ese link se enviará automáticamente a tu Dashboard (o se sube solo a la consola de Google Play Store).
-
-**Resultado:** Tú escribes código en Rust y subes el commit; el robot hace el resto por ti y tus clientes recibirán el `.apk` actualizado a los minutos.
+**Lo que hay que escribir para Android:**
+- `agent-android/src/platform.rs` — `AndroidPlatform` impl `Plataforma`
+- `agent-android/src/printer_android.rs` — Android `PrintManager` o BLE/WiFi Direct
+- Bridge UniFFI para Kotlin
+- Android Foreground Service (reemplaza el tray icon)
+- `WorkManager` o `JobScheduler` (reemplaza el guardian VBScript)
+- OTA via `Intent` de instalación APK (reemplaza Inno Setup)
 
 ---
 
-## 3. Hoja de Ruta Estructural
+## Cambios Previos Requeridos en `core/`
 
-### Fase I: Refactorización y Enlazado C / FFI
-1. Agregar un workspace secundario: `agent-mobile` de tipo `cdylib` (C Dynamic Library).
-2. Definir una interfaz estándar con UniFFI donde documentaremos los comandos que Kotlin le puede gritar a Rust: `encender_agente(id_punto, id_cliente)`, `apagar_agente()`.
-3. Validar exportación inicial hacia un proyecto base en Android Studio probando logs.
+Estos cambios son necesarios antes de empezar el crate Android. Son pequeños y no rompen nada en Windows:
 
-### Fase II: Implementación nativa de la Interfaz "Plataforma"
-Dentro del núcleo KMP aplicaremos el patrón arquitectónico "Expect / Actual":
-- **En la capa compartida (KMP):** Interceptamos el `Base64` del PDF que escupió Rust.
-- **En Android (`actual`):** Se invoca la API `PrintManager` oficial, o se abre un túnel por *Bluetooth Serial / BLE* dependiendo del hardware portátil de facturación.
-- **En iOS (`actual`):** Se canaliza ese Array al ecosistema `UIPrintInteractionController`.
+### 1. Agregar `directorio_temporal()` al trait
+
+El path `temp/` está hardcodeado en `core/src/mqtt.rs:274`. En Android no existe `./temp/`.
+
+```rust
+// core/src/traits.rs — agregar al trait Plataforma
+fn directorio_temporal(&self) -> std::path::PathBuf;
+```
+
+```rust
+// agent-windows/src/platform.rs
+fn directorio_temporal(&self) -> PathBuf { PathBuf::from("temp") }
+
+// agent-android/src/platform.rs (futuro)
+fn directorio_temporal(&self) -> PathBuf {
+    PathBuf::from("/data/data/com.gama.airagent/cache/print")
+}
+```
+
+### 2. Agregar `actualizar()` al trait y mover `updater.rs` fuera de core
+
+`core/src/updater.rs` descarga y ejecuta un instalador Inno Setup `.exe` — es código Windows-only que no pertenece en `core/`.
+
+```rust
+// core/src/traits.rs — agregar al trait Plataforma
+async fn actualizar(&self, update_url: &str, version_actual: &str) -> Result<bool>;
+```
+
+- `agent-windows` implementa: descarga `.exe`, verifica SHA-256, ejecuta Inno Setup
+- `agent-android` implementa: descarga `.apk`, verifica SHA-256, lanza `Intent` de instalación
+- La lógica compartida (fetch `version.txt`, comparación de versión, streaming + hash) va a `core/src/update_utils.rs`
+
+### 3. Corregir comparación de versiones
+
+La comparación actual es lexicográfica y falla si el major version sube (`"9.0.0" > "26.1.1"`). Resolver antes de que esto afecte al móvil también.
 
 ---
 
-> [!TIP]
-> Guarda la dirección IP de `uniffi` en Mozilla para tus desarrolladores: https://mozilla.github.io/uniffi-rs/. Junto al ecosistema de **KMP**, conforma la tecnología militar estándar que se usará el día que decidamos cruzar al hardware telefónico.
+## Estructura del Workspace Final
+
+```
+print-agent-rs/
+├── core/                         # Sin cambios grandes (+ directorio_temporal, + actualizar en trait)
+│   └── src/
+│       ├── update_utils.rs       # NUEVO: lógica OTA portable (sin Inno Setup)
+│       └── traits.rs             # + directorio_temporal() + actualizar()
+│
+├── agent-windows/                # Sin cambios en funcionalidad
+│   └── src/
+│       └── updater_windows.rs    # MOVIDO desde core/src/updater.rs
+│
+└── agent-android/                # NUEVO crate
+    ├── Cargo.toml
+    │   # [lib]
+    │   # crate-type = ["cdylib"]
+    │   # [dependencies]
+    │   # agent-core = { path = "../core" }
+    │   # uniffi = "0.27"
+    │   # jni = "0.21"
+    └── src/
+        ├── lib.rs                # uniffi::include_scaffolding! + exports públicos
+        ├── platform.rs           # AndroidPlatform impl Plataforma
+        └── printer_android.rs    # Android PrintManager API
+```
+
+---
+
+## Stack Tecnológico
+
+### Rust Core → Kotlin via UniFFI
+
+UniFFI (Mozilla) genera el bridge automáticamente a partir de definiciones Rust. No se escribe JNI manual.
+
+```rust
+// agent-android/src/lib.rs
+uniffi::include_scaffolding!("agent_android");
+
+#[uniffi::export]
+pub fn iniciar_agente(config_toml: String) -> Result<(), AgentError> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let cfg = /* parsear config_toml */;
+    let plataforma = Arc::new(AndroidPlatform::new());
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    runtime.block_on(mqtt::run(cfg, plataforma, shutdown_rx, /* pause_rx */))?;
+    Ok(())
+}
+```
+
+```kotlin
+// Android Foreground Service
+class PrintAgentService : Service() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        thread { AgentAndroid.iniciarAgente(leerConfigToml()) }
+        return START_STICKY
+    }
+}
+```
+
+### Renderizado PDF en Android — Decisión Pendiente
+
+| Opción | Pros | Contras |
+|---|---|---|
+| **A. `pdfium` compilado para ARM64** | Mismo pipeline que Windows, misma calidad | Compilar `libpdfium.so` para Android tiene friction; +8 MB al APK |
+| **B. Servidor renderiza, Android recibe imagen** | APK liviano, sin dependencias nativas | Cambia el protocolo MQTT; el servidor necesita capacidad de renderizado |
+
+**Criterio de decisión:** Si el volumen de impresión es alto y la calidad es crítica → Opción A. Si el APK debe ser mínimo y el servidor tiene capacidad → Opción B.
+
+---
+
+## Hoja de Ruta de Implementación
+
+| Paso | Tarea | Notas |
+|---|---|---|
+| 1 | Agregar `directorio_temporal()` al trait | Pequeño, bajo riesgo, desbloquea todo |
+| 2 | Corregir comparación semver en OTA | Una función auxiliar de 5 líneas |
+| 3 | Mover `updater.rs` a `agent-windows/` + `update_utils.rs` en core | Refactor de ~1h |
+| 4 | Crear `agent-android/` con `AndroidPlatform` stub que compile | Validar que el workspace compila con el nuevo crate |
+| 5 | Implementar `printer_android.rs` con Android `PrintManager` | Decidir estrategia PDF antes de este paso |
+| 6 | Integrar UniFFI + Android Foreground Service en Kotlin | Validar bridge con un log simple |
+| 7 | Implementar `actualizar()` para Android (APK Intent) | Requiere permisos `REQUEST_INSTALL_PACKAGES` |
+| 8 | CI/CD: GitHub Actions compila `.so` ARM64 + empaqueta APK | `cargo build --target aarch64-linux-android` |
+
+---
+
+## CI/CD Pipeline (GitHub Actions)
+
+```yaml
+# .github/workflows/android.yml
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK
+        uses: android-actions/setup-android@v3
+      - name: Build Rust .so
+        run: cargo build --release --package agent-android --target aarch64-linux-android
+      - name: Copy .so to KMP jniLibs
+        run: cp target/.../libagent_android.so android-app/src/main/jniLibs/arm64-v8a/
+      - name: Build APK
+        run: ./gradlew assembleRelease
+```
+
+**Resultado:** Push de código Rust → robot compila → APK generado automáticamente → distribuible vía Play Store o link directo.
+
+---
+
+## Consideraciones de Plataforma
+
+- **OTA en Android:** Google Play Store y Apple App Store prohíben actualización binaria silenciosa. En Android se puede usar `Intent` con `ACTION_VIEW` para instalar APKs (requiere permiso del usuario), o distribuir por Play Store y usar in-app update API.
+- **Guardian en Android:** `WorkManager` con `PeriodicWorkRequest` o un Foreground Service con `START_STICKY` mantiene el agente vivo sin necesidad de polling manual.
+- **Notificaciones:** Reemplazar Toast WinRT con `NotificationCompat` de Android y un canal de notificación persistente.
+- **Cifrado de config:** `AES-256-GCM` de `core/src/crypto.rs` funciona igual en Android. Sin cambios.
