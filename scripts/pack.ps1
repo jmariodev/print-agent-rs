@@ -70,8 +70,11 @@ PROBLEMAS FRECUENTES:
 "@ | Out-File -FilePath $readme -Encoding utf8
 
 # 5. Compilar Asistente de Instalación con Inno Setup
-$iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-if (Test-Path $iscc) {
+$iscc_global = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+$iscc_local = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+$iscc = if (Test-Path $iscc_global) { $iscc_global } elseif (Test-Path $iscc_local) { $iscc_local } else { "" }
+
+if ($iscc -ne "") {
   Write-Host "`n>>> Empaquetando Instalador Inno Setup (.exe)..." -ForegroundColor Cyan
   & $iscc .\scripts\installer.iss
   if ($LASTEXITCODE -eq 0) {
@@ -82,7 +85,7 @@ if (Test-Path $iscc) {
   }
 }
 else {
-  Write-Host "!!! ADVERTENCIA: ISCC no encontrado en C:\Program Files (x86)\Inno Setup 6\ISCC.exe." -ForegroundColor Yellow
+  Write-Host "!!! ADVERTENCIA: ISCC no encontrado." -ForegroundColor Yellow
   Write-Host "Por favor instala Inno Setup 6 para empaquetar el ejecutable final." -ForegroundColor Yellow
 }
 

@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "action")]
 pub enum Comando {
     #[serde(rename = "listPrinters")]
@@ -22,6 +22,11 @@ pub enum Comando {
         #[serde(rename = "responseTopic")]
         response_topic: String,
         ambiente: Option<String>,
+    },
+    #[serde(rename = "ping")]
+    Ping {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
     },
 }
 

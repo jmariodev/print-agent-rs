@@ -25,6 +25,23 @@ async fn main() -> Result<()> {
         std::env::set_current_dir(parent)?;
     }
 
+    // ── 1.5 Modo de Verificación (Clíente CLI Temporal) ──────────────────────
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(pos) = args.iter().position(|arg| arg == "--verify-active") {
+        if pos + 3 < args.len() {
+            let ambiente = args[pos + 1].clone();
+            let cliente = args[pos + 2].clone();
+            let punto = args[pos + 3].clone();
+            
+            match agent_core::verifier::verificar_agente_activo(ambiente, cliente, punto).await {
+                Ok(true) => std::process::exit(1), // Activo
+                _ => std::process::exit(0), // Inactivo o Error (permitir instalar)
+            }
+        } else {
+            std::process::exit(0);
+        }
+    }
+
     // ── 2. Cargar configuración ──────────────────────────────────────────────
     let cfg = config_loader::cargar_config()?;
 
@@ -53,7 +70,6 @@ async fn main() -> Result<()> {
     );
 
     // --- TRAZABILIDAD: Identificar si venimos de una resurrección ---
-    let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--revived") {
         tracing::warn!("🧟 REANIMACIÓN: El Agente ha sido levantado por el Guardián tras un cierre inesperado.");
     }

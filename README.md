@@ -66,6 +66,16 @@ Para editar la configuración en equipos de desarrollo/prueba: clic derecho en e
 
 ## Compilación y Empaquetado
 
+### Pre-requisitos (Solo Windows)
+
+Para poder compilar y empaquetar el proyecto desde cero en una máquina Windows, necesitas instalar lo siguiente:
+
+1. **Rust Toolchain:** Instalado vía [rustup](https://rustup.rs/).
+2. **Visual Studio Build Tools:** Descarga el instalador de Microsoft y selecciona la carga de trabajo **"Desarrollo para el escritorio con C++"** (*Desktop development with C++*). Esto instalará `link.exe` y las librerías base necesarias para que Rust pueda compilar binarios en Windows.
+3. **Inno Setup 6:** Descarga e instala [Inno Setup 6](https://jrsoftware.org/isinfo.php). Es necesario para que el script `pack.ps1` pueda compilar el archivo `.iss` y generar el instalador final (`PrintAgentRS_Installer.exe`). El script asume que Inno Setup está instalado en `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`.
+
+### Construcción
+
 ```powershell
 # Desde la raíz del proyecto
 .\scripts\pack.ps1

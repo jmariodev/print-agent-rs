@@ -13,7 +13,8 @@ PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "..\dist\PrintAgentRS\*"; DestDir: "{app}"; Excludes: "config.toml"; Flags: ignoreversion recursesubdirs
+Source: "..\dist\PrintAgentRS\print-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\PrintAgentRS\*"; DestDir: "{app}"; Excludes: "config.toml,print-agent.exe"; Flags: ignoreversion recursesubdirs
 
 [Dirs]
 ; Concedemos permisos de escritura a todos los usuarios para que el agente pueda generar los logs y PDFs temporales
@@ -85,6 +86,9 @@ end;
 
 // Esta función valida que no se dejen campos vacíos si es una instalación limpia
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  ResultCode: Integer;
+  ProgressPage: TOutputProgressWizardPage;
 begin
   Result := True;
   
@@ -98,6 +102,29 @@ begin
       begin
         MsgBox('Todos los campos (Ambiente, ID Cliente e ID Punto) son OBLIGATORIOS para una instalación nueva.', mbError, MB_OK);
         Result := False;
+      end
+      else
+      begin
+        // Ejecutar verificación de agente activo con feedback visual
+        ProgressPage := CreateOutputProgressPage('Verificación de Agente', 'Comprobando si el agente ya está activo en otro equipo. Por favor espere...');
+        ProgressPage.SetProgress(0, 0);
+        ProgressPage.Show;
+        try
+          ExtractTemporaryFile('print-agent.exe');
+          if Exec(ExpandConstant('{tmp}\print-agent.exe'), 
+                  '--verify-active "' + Trim(ConfigPage.Values[0]) + '" "' + Trim(ConfigPage.Values[1]) + '" "' + Trim(ConfigPage.Values[2]) + '"', 
+                  ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+          begin
+            if ResultCode = 1 then
+            begin
+              ProgressPage.Hide;
+              MsgBox('El agente para este ambiente, cliente y punto ya está instalado y activo en otro equipo. Por favor, desinstale el agente en el otro equipo antes de continuar con la instalación.', mbError, MB_OK);
+              Result := False;
+            end;
+          end;
+        finally
+          ProgressPage.Hide;
+        end;
       end;
     end;
   end;

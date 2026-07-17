@@ -253,6 +253,9 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
             
             resp_tuple
         }
+        Comando::Ping { response_topic } => {
+            Some((response_topic, "pong".into()))
+        }
     }
 }
 
