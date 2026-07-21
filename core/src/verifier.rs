@@ -90,32 +90,51 @@ pub async fn verificar_agente_activo(ambiente_str: String, cliente: String, punt
     let topic_tx = cfg.topic_subscripcion();
     let response_topic = format!("respuestas/verify-{}", Uuid::new_v4().as_simple());
 
-    tracing::info!("Verificando agente activo para ambiente {}, cliente {}, punto {}", ambiente_str, cliente, punto);
-    let timeout_duration = Duration::from_secs(5); //Tiempo que vamos a esperar para que los air respondan si estan activos en ese topic
+    tracing::info!("Verificando agente activo para ambiente {}, cliente {}, punto {}. Esperando conexión de red...", ambiente_str, cliente, punto);
+    
+    // 1. Loop infinito: Esperar hasta que haya red y logremos enviar el Ping
+    loop {
+        match event_loop.poll().await {
+            Ok(Event::Incoming(Incoming::ConnAck(_))) => {
+                tracing::info!("Conectado al broker (Verificador). Suscribiendo...");
+                let _ = client.subscribe(&response_topic, QoS::AtLeastOnce).await;
+            }
+            Ok(Event::Incoming(Incoming::SubAck(_))) => {
+                tracing::info!("Suscripción lista. Enviando Ping de verificación...");
+                let ping_cmd = Comando::Ping {
+                    response_topic: response_topic.clone(),
+                };
+                if let Ok(payload) = serde_json::to_string(&ping_cmd) {
+                    let _ = client.publish(&topic_tx, QoS::AtLeastOnce, false, payload.as_bytes()).await;
+                }
+                break; // Rompemos el loop infinito porque ya enviamos el Ping
+            }
+            Err(e) => {
+                // No hay red, el equipo recién encendió o se cayó el internet. 
+                // Ignoramos y dejamos que rumqttc intente reconectar infinitamente.
+                tracing::debug!("Verificador en espera de red: {}", e);
+            }
+            _ => {}
+        }
+    }
+
+    // 2. Loop con Timeout: Esperar respuesta al Ping (máximo 5 segundos)
+    tracing::info!("Ping enviado. Esperando respuesta máxima de 5 segundos...");
+    let timeout_duration = Duration::from_secs(5); 
     
     let result = tokio::time::timeout(timeout_duration, async {
         loop {
             match event_loop.poll().await {
-                Ok(Event::Incoming(Incoming::ConnAck(_))) => {
-                    client.subscribe(&response_topic, QoS::AtLeastOnce).await?;
-                }
-                Ok(Event::Incoming(Incoming::SubAck(_))) => {
-                    let ping_cmd = Comando::Ping {
-                        response_topic: response_topic.clone(),
-                    };
-                    let payload = serde_json::to_string(&ping_cmd)?;
-                    client.publish(&topic_tx, QoS::AtLeastOnce, false, payload.as_bytes()).await?;
-                }
                 Ok(Event::Incoming(Incoming::Publish(p))) => {
                     if p.topic == response_topic {
                         let payload_str = String::from_utf8_lossy(&p.payload);
                         if payload_str == "pong" || payload_str == "Action is required" {
-                            return Ok(true);
+                            return Ok::<bool, anyhow::Error>(true); // ¡Hay un duplicado respondiendo!
                         }
                     }
                 }
                 Err(e) => {
-                    return Err(anyhow::anyhow!("Error MQTT: {}", e));
+                    tracing::debug!("Error de red esperando el pong: {}", e);
                 }
                 _ => {}
             }
@@ -127,6 +146,6 @@ pub async fn verificar_agente_activo(ambiente_str: String, cliente: String, punt
     match result {
         Ok(Ok(activo)) => Ok(activo), 
         Ok(Err(_)) => Ok(false),
-        Err(_) => Ok(false), 
+        Err(_) => Ok(false), // Timeout de 5s expirado, no hubo respuesta (no hay duplicado)
     }
 }

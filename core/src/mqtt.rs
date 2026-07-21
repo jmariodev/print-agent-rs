@@ -66,100 +66,177 @@ pub async fn run(
     cfg: Config,
     plataforma: Arc<dyn Plataforma>,
     mut shutdown_rx: watch::Receiver<bool>,
-    pause_rx: watch::Receiver<bool>,
+    mut pause_rx: watch::Receiver<bool>,
 ) -> Result<()> {
-    let mut opts = MqttOptions::new(cfg.client_id_mqtt(), cfg.broker_url(), cfg.broker_port());
-    // Aumentar el límite de payload (20 MB de entrada y salida) para recibir PDFs pesados
-    opts.set_max_packet_size(20 * 1024 * 1024, 20 * 1024 * 1024);
-
-    if cfg.is_wss() {
-        tracing::info!("Modo Seguro WSS detectado. Activando encriptación WebSockets (Certificados ignorados)...");
-        let config = rustls::ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(InsecureCertVerifier))
-            .with_no_client_auth();
-            
-        opts.set_transport(rumqttc::Transport::Wss(rumqttc::TlsConfiguration::Rustls(Arc::new(config))));
-    }
-
-    let (client, mut event_loop) = AsyncClient::new(opts, 10);
-
     let topico_suscripcion = cfg.topic_subscripcion();
     let topico_broadcast = cfg.topic_broadcast_update();
 
-    let mut intentos_desconectado = 0;
-    let mut es_primera_conexion = true;
-
     loop {
-        tokio::select! {
-            event = event_loop.poll() => {
-                match event {
-                    Ok(Event::Incoming(Incoming::ConnAck(_))) => {
-                        if es_primera_conexion {
-                            let _ = plataforma.mostrar_notificacion("Agente AIR", "🟢 ¡Agente iniciado y enlazado al servidor de impresión en línea!").await;
-                            es_primera_conexion = false;
-                        } else if intentos_desconectado > 0 {
-                            let _ = plataforma.mostrar_notificacion("Agente AIR", "🟢 Conexión reestablecida exitosamente con el Servidor MQTT.").await;
-                            intentos_desconectado = 0;
-                        }
-                        let c = client.clone();
-                        let ts = topico_suscripcion.clone();
-                        let tb = topico_broadcast.clone();
-                        tokio::spawn(async move {
-                            tracing::info!("Conexión establecida con el broker. Iniciando/Restaurando suscripciones...");
-                            if let Err(e) = c.subscribe(&ts, QoS::AtLeastOnce).await {
-                                tracing::error!("Error suscribiendo a {}: {}", ts, e);
-                            } else {
-                                tracing::info!("Suscrito a tópico principal: {}", ts);
-                            }
-                            
-                            if let Err(e) = c.subscribe(&tb, QoS::AtLeastOnce).await {
-                                tracing::error!("Error suscribiendo a {}: {}", tb, e);
-                            } else {
-                                tracing::info!("Suscrito a tópico broadcast (silencioso): {}", tb);
-                            }
-                        });
+        // --- 1. ESPERAR A QUE SE QUITE LA PAUSA ---
+        while *pause_rx.borrow() {
+            tokio::select! {
+                _ = pause_rx.changed() => {}
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        return Ok(());
                     }
-                    Ok(Event::Incoming(Incoming::Publish(p))) => {
-                        // Las actualizaciones broadcast siempre se procesan, incluso pausado
-                        let es_broadcast = p.topic == topico_broadcast;
-
-                        // Si el agente está pausado, ignorar mensajes de impresión
-                        if !es_broadcast && *pause_rx.borrow() {
-                            tracing::info!("⏸️  Agente PAUSADO. Mensaje ignorado en tópico: {}", p.topic);
-                            continue;
-                        }
-
-                        let plataforma = Arc::clone(&plataforma);
-                        let client = client.clone();
-                        let cfg = cfg.clone();
-
-                        tokio::spawn(async move {
-                            manejar_mensaje(p.topic, p.payload.to_vec(), &client, plataforma, &cfg).await;
-                        });
-                    }
-                    Err(e) => {
-                        intentos_desconectado += 1;
-                        if intentos_desconectado == 1 || intentos_desconectado % 5 == 0 {
-                            let _ = plataforma.mostrar_notificacion("Agente AIR", "🔴 Conexión perdida. El agente se está reconectando en segundo plano...").await;
-                        }
-                        tracing::warn!("Error MQTT al intentar conectar a broker {} (reconectando): {}", cfg.broker_url(), e);
-                        // rumqttc tiene su propio backoff de reconexión, pero evitamos un tight loop si la red cae brusca
-                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    }
-                    _ => {}
                 }
             }
-            _ = shutdown_rx.changed() => {
-                if *shutdown_rx.borrow() {
-                    tracing::info!("Señal de shutdown recibida, cerrando MQTT.");
-                    break;
+        }
+
+        // --- 2. VERIFICACIÓN DE DUPLICADO EN EL ARRANQUE/REANUDAR ---
+        tracing::info!("Verificando si la configuración ya está en uso por otro equipo...");
+        match crate::verifier::verificar_agente_activo(
+            cfg.ambiente.to_string(),
+            cfg.id_cliente.clone(),
+            cfg.id_punto.clone(),
+        ).await {
+            Ok(true) => {
+                tracing::error!("🚨 DUPLICADO DETECTADO: El agente ya está activo en otro equipo para este ambiente, cliente y punto.");
+                
+                let _ = plataforma.mostrar_notificacion(
+                    "Agente AIR - Conflicto Detectado",
+                    "🚨 El agente ya está activo en otro equipo para este cliente y punto. Se procederá a cerrar esta instancia."
+                ).await;
+
+                // Esperar 3 segundos para asegurar que el usuario vea/escuche la notificación de Windows antes del apague
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+                tracing::error!("Iniciando secuencia de autodestrucción (desinstalación silenciosa)...");
+
+                let cur_dir = std::env::current_dir().unwrap_or_default();
+                let uninstaller_path = cur_dir.join("unins000.exe");
+
+                if uninstaller_path.exists() {
+                    let _ = std::fs::File::create(cur_dir.join("stop.lock"));
+                    tracing::info!("Candado stop.lock creado.");
+
+                    if let Err(e) = std::process::Command::new(&uninstaller_path)
+                        .arg("/VERYSILENT")
+                        .arg("/SUPPRESSMSGBOXES")
+                        .arg("/NORESTART")
+                        .spawn()
+                    {
+                        tracing::error!("Fallo al lanzar el desinstalador: {}", e);
+                    } else {
+                        tracing::info!("Desinstalador lanzado con éxito. Apagando proceso...");
+                    }
+                } else {
+                    tracing::error!("No se encontró el desinstalador en {:?}", uninstaller_path);
+                }
+                
+                std::process::exit(0);
+            }
+            Err(e) => {
+                tracing::warn!("No se pudo verificar agente duplicado en el arranque (posible sin internet): {}", e);
+            }
+            _ => {
+                tracing::info!("✅ Verificación superada: este es el único agente activo.");
+            }
+        }
+
+        // --- 3. CREAR CLIENTE MQTT FRESCO ---
+        let mut opts = MqttOptions::new(cfg.client_id_mqtt(), cfg.broker_url(), cfg.broker_port());
+        // Aumentar el límite de payload (20 MB de entrada y salida) para recibir PDFs pesados
+        opts.set_max_packet_size(20 * 1024 * 1024, 20 * 1024 * 1024);
+
+        if cfg.is_wss() {
+            tracing::info!("Modo Seguro WSS detectado. Activando encriptación WebSockets (Certificados ignorados)...");
+            let config = rustls::ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(InsecureCertVerifier))
+                .with_no_client_auth();
+                
+            opts.set_transport(rumqttc::Transport::Wss(rumqttc::TlsConfiguration::Rustls(Arc::new(config))));
+        }
+
+        let (client, mut event_loop) = AsyncClient::new(opts, 10);
+
+        let mut intentos_desconectado = 0;
+        let mut es_primera_conexion = true;
+
+        // --- 4. BUCLE DE EVENTOS INTERNO ---
+        loop {
+            tokio::select! {
+                event = event_loop.poll() => {
+                    match event {
+                        Ok(Event::Incoming(Incoming::ConnAck(_))) => {
+                            if es_primera_conexion {
+                                let _ = plataforma.mostrar_notificacion("Agente AIR", "🟢 ¡Agente iniciado y enlazado al servidor de impresión en línea!").await;
+                                es_primera_conexion = false;
+                            } else if intentos_desconectado > 0 {
+                                let _ = plataforma.mostrar_notificacion("Agente AIR", "🟢 Conexión reestablecida exitosamente con el Servidor MQTT.").await;
+                                intentos_desconectado = 0;
+                            }
+                            let c = client.clone();
+                            let ts = topico_suscripcion.clone();
+                            let tb = topico_broadcast.clone();
+                            tokio::spawn(async move {
+                                tracing::info!("Conexión establecida con el broker. Iniciando/Restaurando suscripciones...");
+                                if let Err(e) = c.subscribe(&ts, QoS::AtLeastOnce).await {
+                                    tracing::error!("Error suscribiendo a {}: {}", ts, e);
+                                } else {
+                                    tracing::info!("Suscrito a tópico principal: {}", ts);
+                                }
+                                
+                                if let Err(e) = c.subscribe(&tb, QoS::AtLeastOnce).await {
+                                    tracing::error!("Error suscribiendo a {}: {}", tb, e);
+                                } else {
+                                    tracing::info!("Suscrito a tópico broadcast (silencioso): {}", tb);
+                                }
+                            });
+                        }
+                        Ok(Event::Incoming(Incoming::Publish(p))) => {
+                            let plataforma = Arc::clone(&plataforma);
+                            let client = client.clone();
+                            let cfg = cfg.clone();
+
+                            tokio::spawn(async move {
+                                // Pasamos false para "pausado" porque dentro de este bucle jamás estamos pausados
+                                manejar_mensaje(p.topic, p.payload.to_vec(), &client, plataforma, &cfg).await;
+                            });
+                        }
+                        Err(e) => {
+                            intentos_desconectado += 1;
+                            if intentos_desconectado == 1 || intentos_desconectado % 5 == 0 {
+                                let _ = plataforma.mostrar_notificacion("Agente AIR", "🔴 Conexión perdida. El agente se está reconectando en segundo plano...").await;
+                            }
+                            tracing::warn!("Error MQTT al intentar conectar a broker {} (reconectando): {}", cfg.broker_url(), e);
+                            // ELIMINADO: tokio::time::sleep(2).await; ya que bloquea el select! impidiendo procesar la pausa.
+                            // rumqttc ya hace backoff interno al fallar la conexión.
+                        }
+                        _ => {}
+                    }
+                }
+                _ = pause_rx.changed() => {
+                    if *pause_rx.borrow() {
+                        tracing::info!("Se recibió señal de PAUSA. Desconectando cliente MQTT...");
+                        if let Err(e) = client.disconnect().await {
+                             tracing::warn!("Error al encolar desconexión del cliente MQTT: {}", e);
+                        } else {
+                             // Darle tiempo al event_loop de enviar el paquete DISCONNECT al broker
+                             let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                                 loop {
+                                     match event_loop.poll().await {
+                                         Ok(rumqttc::Event::Incoming(rumqttc::Incoming::Disconnect)) | Err(_) => break,
+                                         _ => {}
+                                     }
+                                 }
+                             }).await;
+                        }
+                        // Rompemos el bucle interno para destruir el cliente y volver al bucle externo (donde dormirá)
+                        break;
+                    }
+                }
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        tracing::info!("Señal de shutdown recibida, cerrando MQTT.");
+                        return Ok(());
+                    }
                 }
             }
         }
     }
-
-    Ok(())
 }
 
 async fn manejar_mensaje(
