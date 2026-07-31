@@ -117,21 +117,68 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
                 bail!("Fallo StartPage en página {}", i);
             }
 
-            let render_config = PdfRenderConfig::new().set_target_width(ancho_px);
+            let render_config = PdfRenderConfig::new()
+                .set_target_width(ancho_px)
+                .set_text_smoothing(false)
+                .set_path_smoothing(false);
             let bitmap = page.render_with_config(&render_config).context("Fallo render")?;
 
             let bgra_bytes = bitmap.as_raw_bytes();
             let bmp_w = bitmap.width() as i32;
             let bmp_h = bitmap.height() as i32;
 
+            // Obtener el umbral de negro desde la configuración global (por defecto 0, desactivado)
+            let umbral = crate::CONFIG_GLOBAL.get()
+                .and_then(|c| c.umbral_negro)
+                .unwrap_or(0);
+
             // Invertimos las filas manualmente (Bottom-Up) para que sea compatible con el 100%
             // de los drivers de Windows, incluyendo impresoras antiguas o genéricas (como SAT o Xprinter).
             let mut flipped_bytes = Vec::with_capacity(bgra_bytes.len());
             let row_size = (bmp_w * 4) as usize;
-            for row in (0..bmp_h).rev() {
-                let start = (row as usize) * row_size;
-                let end = start + row_size;
-                flipped_bytes.extend_from_slice(&bgra_bytes[start..end]);
+            
+            if umbral > 0 && umbral != 100 {
+                // Mapeamos el umbral a un valor gamma (ej. umbral de 200 -> gamma de 2.0)
+                // Esto aplica una corrección gamma suave en vez de una binarización dura,
+                // manteniendo los degradados del logo y la claridad del QR intactos.
+                let gamma = umbral as f32 / 100.0;
+                let mut lut = [0u8; 256];
+                for (i, val) in lut.iter_mut().enumerate() {
+                    let normalized = i as f32 / 255.0;
+                    let darkened = normalized.powf(gamma);
+                    *val = (darkened * 255.0).round().clamp(0.0, 255.0) as u8;
+                }
+
+                for row in (0..bmp_h).rev() {
+                    let start = (row as usize) * row_size;
+                    let end = start + row_size;
+                    let row_bytes = &bgra_bytes[start..end];
+                    
+                    for chunk in row_bytes.chunks_exact(4) {
+                        let b = chunk[0];
+                        let g = chunk[1];
+                        let r = chunk[2];
+                        let a = chunk[3];
+                        
+                        if a < 50 {
+                            flipped_bytes.push(255); // B
+                            flipped_bytes.push(255); // G
+                            flipped_bytes.push(255); // R
+                            flipped_bytes.push(255); // A
+                        } else {
+                            flipped_bytes.push(lut[b as usize]); // B
+                            flipped_bytes.push(lut[g as usize]); // G
+                            flipped_bytes.push(lut[r as usize]); // R
+                            flipped_bytes.push(255);             // A
+                        }
+                    }
+                }
+            } else {
+                for row in (0..bmp_h).rev() {
+                    let start = (row as usize) * row_size;
+                    let end = start + row_size;
+                    flipped_bytes.extend_from_slice(&bgra_bytes[start..end]);
+                }
             }
 
             let bmi = BITMAPINFO {

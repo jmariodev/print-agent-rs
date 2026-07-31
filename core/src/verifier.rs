@@ -71,6 +71,7 @@ pub async fn verificar_agente_activo(ambiente_str: String, cliente: String, punt
         broker_port: None,
         update_url: None,
         log_level: None,
+        umbral_negro: None,
     };
 
     let client_id = format!("verify-{}-{}", cfg.client_id_mqtt(), Uuid::new_v4().as_simple());

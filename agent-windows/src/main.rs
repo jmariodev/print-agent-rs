@@ -14,6 +14,8 @@ mod platform;
 use platform::WindowsPlatform;
 use agent_core::mqtt;
 
+pub static CONFIG_GLOBAL: std::sync::OnceLock<agent_core::config::Config> = std::sync::OnceLock::new();
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // ── 0. Registrar notificaciones ──────────────────────────────────────────
@@ -44,6 +46,7 @@ async fn main() -> Result<()> {
 
     // ── 2. Cargar configuración ──────────────────────────────────────────────
     let cfg = config_loader::cargar_config()?;
+    let _ = CONFIG_GLOBAL.set(cfg.clone());
 
     // ── 2.5 Limpieza de residuos de actualización (OTA) ──────────────────────
     tokio::spawn(async {

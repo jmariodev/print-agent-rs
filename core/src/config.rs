@@ -62,6 +62,7 @@ pub struct Config {
     pub broker_port: Option<u16>,
     pub update_url: Option<String>,
     pub log_level: Option<String>,
+    pub umbral_negro: Option<u8>,
 }
 
 impl Config {
