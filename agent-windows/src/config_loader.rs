@@ -15,7 +15,7 @@ broker_url = "mqtt://127.0.0.1"
 broker_port = 1883
 update_url = "https://updates.tudominio.com/print-agent/"
 log_level  = "info"
-# umbral_negro = 0       # Opcional: Intensidad del negro (0=desactivado por defecto, 200=más oscuro si el PDF tiene fuentes claras)
+# umbral_negro = 200     # Opcional: Intensidad del negro (0=desactivado, 200=por defecto (Gamma 2.0), 250=más oscuro)
 "#;
 
 pub fn cargar_config() -> Result<Config> {

@@ -117,20 +117,17 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
                 bail!("Fallo StartPage en página {}", i);
             }
 
-            let render_config = PdfRenderConfig::new()
-                .set_target_width(ancho_px)
-                .set_text_smoothing(false)
-                .set_path_smoothing(false);
+            let render_config = PdfRenderConfig::new().set_target_width(ancho_px);
             let bitmap = page.render_with_config(&render_config).context("Fallo render")?;
 
             let bgra_bytes = bitmap.as_raw_bytes();
             let bmp_w = bitmap.width() as i32;
             let bmp_h = bitmap.height() as i32;
 
-            // Obtener el umbral de negro desde la configuración global (por defecto 0, desactivado)
+            // Obtener el umbral de negro desde la configuración global (por defecto 200, Gamma 2.0)
             let umbral = crate::CONFIG_GLOBAL.get()
                 .and_then(|c| c.umbral_negro)
-                .unwrap_or(0);
+                .unwrap_or(200);
 
             // Invertimos las filas manualmente (Bottom-Up) para que sea compatible con el 100%
             // de los drivers de Windows, incluyendo impresoras antiguas o genéricas (como SAT o Xprinter).
