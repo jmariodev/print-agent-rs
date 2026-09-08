@@ -52,8 +52,17 @@ async fn main() -> Result<()> {
     tokio::spawn(async {
         // Darle 5 segundos al Instalador previo (Inno Setup) para que se cierre por completo
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        let _ = tokio::fs::remove_file("PrintAgentRS_Update.exe").await;
-        let _ = tokio::fs::remove_file("PrintAgentRS_Installer.tmp.exe").await;
+        // Limpiar instaladores descargados por actualizaciones OTA previas
+        if let Ok(entries) = std::fs::read_dir(".") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let es_actualizador = name.starts_with("PrintAgentRS_Update_") && name.ends_with(".exe");
+                let es_temporal = name == "PrintAgentRS_Installer.tmp.exe";
+                if es_actualizador || es_temporal {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
+            }
+        }
     });
 
     // ── 3. Configurar logging estructurado ───────────────────────────────────
@@ -138,10 +147,10 @@ async fn main() -> Result<()> {
     let _ = tray.inner_mut().add_separator();
     
     // Reiniciar Agente: siempre visible en todos los ambientes
-    let shutdown_tx_tray_re = shutdown_tx.clone();
     let _ = tray.add_menu_item("Reiniciar Agente", move || {
         tracing::info!("Usuario solicitó reinicio. Cerrando agente para que el guardián lo reviva...");
-        let _ = shutdown_tx_tray_re.send(true);
+        // Salida forzada para que el Guardián detecte el cierre y lo reviva sin quedar colgado.
+        std::process::exit(0);
     });
 
     // Ver Logs: siempre visible, abre la carpeta de logs en Windows Explorer
@@ -231,7 +240,7 @@ async fn main() -> Result<()> {
     // Mantener la variable tray viva eludiendo el drop hasta que termine main
     let _tray_keeper = tray;
 
-    mqtt::run(cfg, plataforma, shutdown_rx, pause_rx).await?;
+    mqtt::run(cfg, plataforma, shutdown_rx, pause_rx, shutdown_tx, pause_tx, VERSION_ACTUAL.to_string()).await?;
 
     Ok(())
 }

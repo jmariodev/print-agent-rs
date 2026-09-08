@@ -68,6 +68,8 @@ begin
 
   // Asesinar silenciosamente cualquier instancia rebelde o zombie del agente antes de instalar
   Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Asesinar también el guardián huérfano (wscript lanzador.vbs) que pudo quedar de una desinstalación previa
+  Exec('taskkill.exe', '/F /IM wscript.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // Esta función se dispara antes de proceder con pasos críticos de desinstalación
@@ -79,8 +81,11 @@ begin
   begin
     // Escribir stop.lock para asegurar que el guardián no lo reviva durante desinstalación
     SaveStringToFile(ExpandConstant('{app}\stop.lock'), 'stop', False);
-    // Asesinar antes de desinstalar para evitar bloqueos
-    Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // Asesinar el guardián (wscript lanzador.vbs) para que no intente revivir el agente durante la desinstalación
+    Exec('taskkill.exe', '/F /IM wscript.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // Asesinar el agente sin /T: si usáramos /T mataríamos también a este desinstalador (unins000.exe),
+    // que es hijo del agente, y no se borrarían los archivos.
+    Exec('taskkill.exe', '/F /IM print-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 

@@ -115,6 +115,10 @@ Ver [API_MQTT.md](API_MQTT.md) para la referencia completa del protocolo.
 { "action": "print", "responseTopic": "...", "printerName": "...", "fileToPrint": "<base64_pdf>" }
 { "action": "update-air", "responseTopic": "...", "ambiente": "prod" }
 { "action": "air-status", "responseTopic": "..." }
+{ "action": "restart", "responseTopic": "..." }
+{ "action": "pause", "responseTopic": "..." }
+{ "action": "resume", "responseTopic": "..." }
+{ "action": "uninstall", "responseTopic": "..." }
 ```
 
 ---

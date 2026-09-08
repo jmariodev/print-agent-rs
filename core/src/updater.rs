@@ -2,6 +2,7 @@ use anyhow::{Result, bail, Context};
 use sha2::{Sha256, Digest};
 use reqwest::Client;
 use tokio::io::AsyncWriteExt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Result<bool> {
     let client = Client::builder()
@@ -65,8 +66,13 @@ pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Re
 
     tracing::info!("Hash verificado. Lanzando actualización silenciosa OTA...");
     
-    // Renombrar temporal al final (Ruta absoluta)
-    let final_exe = cur_dir.join("PrintAgentRS_Update.exe");
+    // Renombrar temporal al nombre final con sufijo único (versión + timestamp),
+    // evitando colisionar con un instalador de un intento previo que aún esté bloqueado (os error 32).
+    let uniq = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let final_exe = cur_dir.join(format!("PrintAgentRS_Update_{}_{}.exe", version_nueva, uniq));
     tokio::fs::rename(&tmp_path, &final_exe).await?;
 
     tracing::info!("Ruta absoluta resuelta para ejecución: {:?}", final_exe);

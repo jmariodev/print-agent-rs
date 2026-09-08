@@ -145,10 +145,12 @@ Solicita a **todos los agentes de un cliente** que reporten su identidad. Solo r
 **Respuesta** (en `responseTopic`, una por cada agente encendido):
 ```json
 {
+  "evento": "encendido",
   "idCliente": "gama",
   "idPunto": "001",
   "ambiente": "prod_gd4",
-  "estado": "encendido"
+  "estado": "encendido",
+  "version": "26.3.0"
 }
 ```
 
@@ -174,11 +176,43 @@ El agente publica de forma **proactiva** su estado en el topic `{ambiente}-{id_c
   "idCliente": "gama",
   "idPunto": "001",
   "ambiente": "prod_gd4",
-  "estado": "online"
+  "estado": "online",
+  "version": "26.3.0"
 }
 ```
 
 > Para `offline`, el broker usa el **Last Will & Testament** registrado por el agente al conectarse, por lo que el evento se publica incluso si el proceso muere o se corta la red de forma abrupta (siempre que el broker detecte la desconexión).
+
+---
+
+### 6. Acciones de Control Remoto
+
+Comandos dirigidos a un punto específico para administrarlo de forma remota. Se envían al topic transaccional `{ambiente}-{id_cliente}-{id_punto}-imp-local`.
+
+| `action` | Respuesta en `responseTopic` | Efecto |
+|---|---|---|
+| `restart` | `Reiniciando agente` | Cierra el proceso sin `stop.lock`; el Guardian VBS lo revive al instante |
+| `pause` | `Agente en pausa` | Pausa el procesamiento de impresiones (y publica evento `offline`) |
+| `resume` | `Agente reanudado` | Reanuda el procesamiento (y publica evento `online`) |
+| `uninstall` | `Desinstalando agente` | Escribe `stop.lock` y lanza `unins000.exe /VERYSILENT /NORESTART` |
+
+**Ejemplo — Reiniciar:**
+```json
+{
+  "action": "restart",
+  "responseTopic": "mi-app/respuestas/control"
+}
+```
+
+**Ejemplo — Pausar:**
+```json
+{
+  "action": "pause",
+  "responseTopic": "mi-app/respuestas/control"
+}
+```
+
+> **Advertencia:** `uninstall` es una acción destructiva e irreversible. Debe ejecutarse solo con confirmación explícita del administrador.
 
 ---
 
