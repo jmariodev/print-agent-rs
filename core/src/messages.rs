@@ -33,6 +33,26 @@ pub enum Comando {
         #[serde(rename = "responseTopic")]
         response_topic: String,
     },
+    #[serde(rename = "restart")]
+    Restart {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
+    },
+    #[serde(rename = "pause")]
+    Pause {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
+    },
+    #[serde(rename = "resume")]
+    Resume {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
+    },
+    #[serde(rename = "uninstall")]
+    Uninstall {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
+    },
 }
 
 #[derive(Deserialize)]

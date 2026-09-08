@@ -67,6 +67,8 @@ pub async fn run(
     plataforma: Arc<dyn Plataforma>,
     mut shutdown_rx: watch::Receiver<bool>,
     mut pause_rx: watch::Receiver<bool>,
+    shutdown_tx: watch::Sender<bool>,
+    pause_tx: watch::Sender<bool>,
 ) -> Result<()> {
     let topico_suscripcion = cfg.topic_subscripcion();
     let topico_broadcast = cfg.topic_broadcast_update();
@@ -218,10 +220,12 @@ pub async fn run(
                             let plataforma = Arc::clone(&plataforma);
                             let client = client.clone();
                             let cfg = cfg.clone();
+                            let shutdown_tx_remoto = shutdown_tx.clone();
+                            let pause_tx_remoto = pause_tx.clone();
 
                             tokio::spawn(async move {
                                 // Pasamos false para "pausado" porque dentro de este bucle jamás estamos pausados
-                                manejar_mensaje(p.topic, p.payload.to_vec(), &client, plataforma, &cfg).await;
+                                manejar_mensaje(p.topic, p.payload.to_vec(), &client, plataforma, &cfg, shutdown_tx_remoto, pause_tx_remoto).await;
                             });
                         }
                         Err(e) => {
@@ -279,8 +283,13 @@ pub async fn run(
 /// Construye el payload JSON de estado/evento del agente.
 fn payload_estado(cfg: &Config, estado: &str) -> String {
     format!(
-        r#"{{"evento":"{}","idCliente":"{}","idPunto":"{}","ambiente":"{}","estado":"{}"}}"#,
-        estado, cfg.id_cliente, cfg.id_punto, cfg.ambiente.as_str(), estado
+        r#"{{"evento":"{}","idCliente":"{}","idPunto":"{}","ambiente":"{}","estado":"{}","version":"{}"}}"#,
+        estado,
+        cfg.id_cliente,
+        cfg.id_punto,
+        cfg.ambiente.as_str(),
+        estado,
+        env!("CARGO_PKG_VERSION")
     )
 }
 
@@ -290,6 +299,8 @@ async fn manejar_mensaje(
     client: &AsyncClient,
     plataforma: Arc<dyn Plataforma>,
     cfg: &Config,
+    shutdown_tx: watch::Sender<bool>,
+    pause_tx: watch::Sender<bool>,
 ) {
     // 0. Topic de status por cliente: responder identidad del punto (solo responde el que está encendido)
     if topic == cfg.topic_status_cliente() {
@@ -320,7 +331,7 @@ async fn manejar_mensaje(
     }
 
     // 2. Comportamiento normal JSON entrante (Comando transaccional)
-    let respuesta_texto = match serde_json::from_slice::<Comando>(&payload) {
+    match serde_json::from_slice::<Comando>(&payload) {
         Err(e) => {
             tracing::warn!("JSON inválido: {}", e);
             // Intentar extraer el responseTopic mínimamente para avisar al emisor local
@@ -333,18 +344,59 @@ async fn manejar_mensaje(
                     tracing::error!("Comando inválido sin responseTopic.");
                 }
             }
-            return;
         }
-        Ok(cmd) => procesar_comando(cmd, plataforma, cfg).await,
-    };
+        Ok(cmd) => match cmd {
+            // --- Acciones de control remoto: responder primero y luego disparar la señal ---
+            Comando::Restart { response_topic } => {
+                tracing::info!("Comando RESTART recibido. Respondiendo y cerrando para que el guardián reviva...");
+                let _ = client.publish(&response_topic, QoS::AtLeastOnce, false, "Reiniciando agente".as_bytes()).await;
+                let _ = shutdown_tx.send(true);
+            }
+            Comando::Pause { response_topic } => {
+                tracing::info!("Comando PAUSE recibido.");
+                let _ = client.publish(&response_topic, QoS::AtLeastOnce, false, "Agente en pausa".as_bytes()).await;
+                let _ = pause_tx.send(true);
+            }
+            Comando::Resume { response_topic } => {
+                tracing::info!("Comando RESUME recibido.");
+                let _ = client.publish(&response_topic, QoS::AtLeastOnce, false, "Agente reanudado".as_bytes()).await;
+                let _ = pause_tx.send(false);
+            }
+            Comando::Uninstall { response_topic } => {
+                tracing::info!("Comando UNINSTALL recibido. Iniciando desinstalación silenciosa...");
+                let _ = client.publish(&response_topic, QoS::AtLeastOnce, false, "Desinstalando agente".as_bytes()).await;
 
-    if let Some((resp_topic, resp_payload)) = respuesta_texto {
-        if let Err(e) = client
-            .publish(&resp_topic, QoS::AtLeastOnce, false, resp_payload.as_bytes())
-            .await
-        {
-            tracing::error!("No se pudo publicar respuesta MQTT en {}: {}", resp_topic, e);
-        }
+                let cur_dir = std::env::current_dir().unwrap_or_default();
+                let uninstaller_path = cur_dir.join("unins000.exe");
+                let _ = std::fs::File::create(cur_dir.join("stop.lock"));
+                if uninstaller_path.exists() {
+                    tracing::info!("Lanzando desinstalador: {:?}", uninstaller_path);
+                    if let Err(e) = std::process::Command::new(&uninstaller_path)
+                        .arg("/VERYSILENT")
+                        .arg("/SUPPRESSMSGBOXES")
+                        .arg("/NORESTART")
+                        .spawn()
+                    {
+                        tracing::error!("Fallo al lanzar el desinstalador: {}", e);
+                    }
+                } else {
+                    tracing::error!("No se encontró el desinstalador (unins000.exe)");
+                }
+                let _ = shutdown_tx.send(true);
+            }
+            // --- Resto de comandos (transaccionales normales) ---
+            otro => {
+                let respuesta_texto = procesar_comando(otro, plataforma, cfg).await;
+                if let Some((resp_topic, resp_payload)) = respuesta_texto {
+                    if let Err(e) = client
+                        .publish(&resp_topic, QoS::AtLeastOnce, false, resp_payload.as_bytes())
+                        .await
+                    {
+                        tracing::error!("No se pudo publicar respuesta MQTT en {}: {}", resp_topic, e);
+                    }
+                }
+            }
+        },
     }
 }
 
@@ -394,6 +446,8 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
             let status_json = payload_estado(cfg, "encendido");
             Some((response_topic, status_json))
         }
+        // Restart/Pause/Resume/Uninstall se manejan antes en `manejar_mensaje`.
+        _ => None,
     }
 }
 

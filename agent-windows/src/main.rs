@@ -231,7 +231,7 @@ async fn main() -> Result<()> {
     // Mantener la variable tray viva eludiendo el drop hasta que termine main
     let _tray_keeper = tray;
 
-    mqtt::run(cfg, plataforma, shutdown_rx, pause_rx).await?;
+    mqtt::run(cfg, plataforma, shutdown_rx, pause_rx, shutdown_tx, pause_tx).await?;
 
     Ok(())
 }
