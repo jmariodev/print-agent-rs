@@ -78,6 +78,14 @@ impl Config {
         format!("update-air-{}", self.ambiente.base_env())
     }
 
+    pub fn topic_status_cliente(&self) -> String {
+        format!("{}-{}-air-status", self.ambiente.as_str(), self.id_cliente)
+    }
+
+    pub fn topic_event_cliente(&self) -> String {
+        format!("{}-{}-air-event", self.ambiente.as_str(), self.id_cliente)
+    }
+
     pub fn is_wss(&self) -> bool {
         let raw = self.broker_url
             .clone()

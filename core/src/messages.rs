@@ -28,6 +28,11 @@ pub enum Comando {
         #[serde(rename = "responseTopic")]
         response_topic: String,
     },
+    #[serde(rename = "air-status")]
+    AirStatus {
+        #[serde(rename = "responseTopic")]
+        response_topic: String,
+    },
 }
 
 #[derive(Deserialize)]

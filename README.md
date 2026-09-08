@@ -99,10 +99,14 @@ Ver [API_MQTT.md](API_MQTT.md) para la referencia completa del protocolo.
 |---|---|
 | `{ambiente}-{id_cliente}-{id_punto}-imp-local` | Comandos directos al agente |
 | `update-air-{base_env}` | Actualización OTA masiva (broadcast) |
+| `{ambiente}-{id_cliente}-air-status` | Consulta de estado de todos los agentes de un cliente |
+| `{ambiente}-{id_cliente}-air-event` | Eventos en tiempo real (online/offline) por cliente |
 
 **Ejemplo** con `ambiente=prod_gd4`, `id_cliente=gama`, `id_punto=001`:
 - Comandos: `prod_gd4-gama-001-imp-local`
 - Broadcast OTA: `update-air-prod` (todos los `prod*` comparten este canal)
+- Status por cliente: `prod_gd4-gama-air-status`
+- Eventos por cliente: `prod_gd4-gama-air-event`
 
 ### Comandos disponibles
 
@@ -110,6 +114,7 @@ Ver [API_MQTT.md](API_MQTT.md) para la referencia completa del protocolo.
 { "action": "listPrinters", "responseTopic": "..." }
 { "action": "print", "responseTopic": "...", "printerName": "...", "fileToPrint": "<base64_pdf>" }
 { "action": "update-air", "responseTopic": "...", "ambiente": "prod" }
+{ "action": "air-status", "responseTopic": "..." }
 ```
 
 ---

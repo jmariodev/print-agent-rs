@@ -1,4 +1,4 @@
-use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Incoming};
+use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Incoming, LastWill};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -70,6 +70,8 @@ pub async fn run(
 ) -> Result<()> {
     let topico_suscripcion = cfg.topic_subscripcion();
     let topico_broadcast = cfg.topic_broadcast_update();
+    let topico_status = cfg.topic_status_cliente();
+    let topico_event = cfg.topic_event_cliente();
 
     loop {
         // --- 1. ESPERAR A QUE SE QUITE LA PAUSA ---
@@ -140,6 +142,16 @@ pub async fn run(
         // Aumentar el límite de payload (20 MB de entrada y salida) para recibir PDFs pesados
         opts.set_max_packet_size(20 * 1024 * 1024, 20 * 1024 * 1024);
 
+        // Last Will & Testament: si el agente cae o pierde conexión inesperadamente,
+        // el broker publica automáticamente un evento "offline" en el topic de eventos del cliente.
+        let will = LastWill::new(
+            cfg.topic_event_cliente(),
+            payload_estado(&cfg, "offline").into_bytes(),
+            QoS::AtLeastOnce,
+            false,
+        );
+        opts.set_last_will(will);
+
         if cfg.is_wss() {
             tracing::info!("Modo Seguro WSS detectado. Activando encriptación WebSockets (Certificados ignorados)...");
             let config = rustls::ClientConfig::builder()
@@ -171,6 +183,9 @@ pub async fn run(
                             let c = client.clone();
                             let ts = topico_suscripcion.clone();
                             let tb = topico_broadcast.clone();
+                            let tstatus = topico_status.clone();
+                            let tevent = topico_event.clone();
+                            let event_online = payload_estado(&cfg, "online");
                             tokio::spawn(async move {
                                 tracing::info!("Conexión establecida con el broker. Iniciando/Restaurando suscripciones...");
                                 if let Err(e) = c.subscribe(&ts, QoS::AtLeastOnce).await {
@@ -183,6 +198,19 @@ pub async fn run(
                                     tracing::error!("Error suscribiendo a {}: {}", tb, e);
                                 } else {
                                     tracing::info!("Suscrito a tópico broadcast (silencioso): {}", tb);
+                                }
+
+                                if let Err(e) = c.subscribe(&tstatus, QoS::AtLeastOnce).await {
+                                    tracing::error!("Error suscribiendo a {}: {}", tstatus, e);
+                                } else {
+                                    tracing::info!("Suscrito a tópico de status por cliente: {}", tstatus);
+                                }
+
+                                // Publicar evento "online" para que los paneles en vivo detecten este punto como encendido
+                                if let Err(e) = c.publish(&tevent, QoS::AtLeastOnce, false, event_online.as_bytes()).await {
+                                    tracing::error!("Error publicando evento online a {}: {}", tevent, e);
+                                } else {
+                                    tracing::info!("Evento online publicado en {}", tevent);
                                 }
                             });
                         }
@@ -211,6 +239,15 @@ pub async fn run(
                 _ = pause_rx.changed() => {
                     if *pause_rx.borrow() {
                         tracing::info!("Se recibió señal de PAUSA. Desconectando cliente MQTT...");
+
+                        // Publicar evento "offline" antes de desconectar para que los paneles lo reflejen
+                        let event_offline = payload_estado(&cfg, "offline");
+                        if let Err(e) = client.publish(&topico_event, QoS::AtLeastOnce, false, event_offline.as_bytes()).await {
+                            tracing::error!("Error publicando evento offline a {}: {}", topico_event, e);
+                        } else {
+                            tracing::info!("Evento offline publicado en {}", topico_event);
+                        }
+
                         if let Err(e) = client.disconnect().await {
                              tracing::warn!("Error al encolar desconexión del cliente MQTT: {}", e);
                         } else {
@@ -239,6 +276,14 @@ pub async fn run(
     }
 }
 
+/// Construye el payload JSON de estado/evento del agente.
+fn payload_estado(cfg: &Config, estado: &str) -> String {
+    format!(
+        r#"{{"evento":"{}","idCliente":"{}","idPunto":"{}","ambiente":"{}","estado":"{}"}}"#,
+        estado, cfg.id_cliente, cfg.id_punto, cfg.ambiente.as_str(), estado
+    )
+}
+
 async fn manejar_mensaje(
     topic: String,
     payload: Vec<u8>,
@@ -246,6 +291,18 @@ async fn manejar_mensaje(
     plataforma: Arc<dyn Plataforma>,
     cfg: &Config,
 ) {
+    // 0. Topic de status por cliente: responder identidad del punto (solo responde el que está encendido)
+    if topic == cfg.topic_status_cliente() {
+        if let Ok(Comando::AirStatus { response_topic }) = serde_json::from_slice::<Comando>(&payload) {
+            let status_json = payload_estado(cfg, "encendido");
+            tracing::info!("Recibido comando air-status. Respondiendo estado del punto en {}", response_topic);
+            if let Err(e) = client.publish(&response_topic, QoS::AtLeastOnce, false, status_json.as_bytes()).await {
+                tracing::error!("Error publicando estado a {}: {}", response_topic, e);
+            }
+        }
+        return;
+    }
+
     // 1. Verificar si es el tópico de broadcast update masivo
     if topic == cfg.topic_broadcast_update() {
         tracing::info!("Recibido comando BROADCAST de actualización por tópico silencioso.");
@@ -332,6 +389,10 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
         }
         Comando::Ping { response_topic } => {
             Some((response_topic, "pong".into()))
+        }
+        Comando::AirStatus { response_topic } => {
+            let status_json = payload_estado(cfg, "encendido");
+            Some((response_topic, status_json))
         }
     }
 }

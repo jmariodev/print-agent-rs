@@ -6,12 +6,14 @@ Protocolo de comunicación entre el servidor/aplicación y los agentes de impres
 
 ## Topics
 
-El agente se suscribe automáticamente a dos topics al conectarse:
+El agente se suscribe automáticamente a tres topics al conectarse:
 
 | Topic | Formato | Uso |
 |---|---|---|
 | **Transaccional** | `{ambiente}-{id_cliente}-{id_punto}-imp-local` | Comandos dirigidos a un agente específico |
 | **Broadcast OTA** | `update-air-{base_env}` | Actualización masiva a todos los agentes del ambiente |
+| **Status por cliente** | `{ambiente}-{id_cliente}-air-status` | Consulta de estado de todos los agentes de un cliente |
+| **Eventos por cliente** | `{ambiente}-{id_cliente}-air-event` | Eventos en tiempo real (online/offline) de los agentes del cliente |
 
 ### Ambientes y `base_env`
 
@@ -28,6 +30,8 @@ El campo `ambiente` en `config.toml` puede ser: `dev`, `test`, `prod`, o cualqui
 **Ejemplo** con `ambiente=prod_gd4`, `id_cliente=gama`, `id_punto=001`:
 - Transaccional: `prod_gd4-gama-001-imp-local`
 - Broadcast: `update-air-prod`
+- Status por cliente: `prod_gd4-gama-air-status`
+- Eventos por cliente: `prod_gd4-gama-air-event`
 
 ---
 
@@ -116,6 +120,65 @@ Verificando actualizaciones
 ```
 
 > Si hay nueva versión, el agente la descarga, verifica SHA-256 e instala silenciosamente. El proceso finaliza con `exit(0)` para liberar file locks antes de que Inno Setup sobrescriba el binario.
+
+---
+
+### 4. Consulta de Estado por Cliente (`air-status`)
+
+Solicita a **todos los agentes de un cliente** que reporten su identidad. Solo responden los agentes que están encendidos; los que no responden se asumen apagados.
+
+**Topic:** `{ambiente}-{id_cliente}-air-status`
+
+**Enviar:**
+```json
+{
+  "action": "air-status",
+  "responseTopic": "mi-app/respuestas/air-status"
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `action` | string | Siempre `"air-status"` |
+| `responseTopic` | string | Topic donde cada agente encendido publicará su identidad |
+
+**Respuesta** (en `responseTopic`, una por cada agente encendido):
+```json
+{
+  "idCliente": "gama",
+  "idPunto": "001",
+  "ambiente": "prod_gd4",
+  "estado": "encendido"
+}
+```
+
+> El `responseTopic` debe ser único por consulta para evitar cruce de respuestas entre solicitudes concurrentes (por ejemplo, incluyendo un UUID).
+
+---
+
+### 5. Eventos en Tiempo Real por Cliente (`air-event`)
+
+El agente publica de forma **proactiva** su estado en el topic `{ambiente}-{id_cliente}-air-event`, permitiendo que un panel suscrito a ese topic se actualice en tiempo real sin necesidad de consultas.
+
+**Eventos publicados:**
+
+| Evento | Cuándo se publica |
+|---|---|
+| `online` | Cuando el agente establece (o restablece) conexión con el broker, o se reanuda de una pausa |
+| `offline` | Publicado automáticamente por el broker (Last Will & Testament) cuando el agente se cae o pierde conexión inesperadamente |
+
+**Payload** (en el topic `{ambiente}-{id_cliente}-air-event`):
+```json
+{
+  "evento": "online",
+  "idCliente": "gama",
+  "idPunto": "001",
+  "ambiente": "prod_gd4",
+  "estado": "online"
+}
+```
+
+> Para `offline`, el broker usa el **Last Will & Testament** registrado por el agente al conectarse, por lo que el evento se publica incluso si el proceso muere o se corta la red de forma abrupta (siempre que el broker detecte la desconexión).
 
 ---
 
