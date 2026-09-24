@@ -1,6 +1,6 @@
 [package]
 name = "agent-windows"
-version = "26.2.0"
+version = "26.3.6"
 edition = "2024"
 
 [dependencies]
