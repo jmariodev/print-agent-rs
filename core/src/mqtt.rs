@@ -439,12 +439,22 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
             }
         }
 
-        Comando::Print { response_topic, printer_name, file_to_print } => {
+        Comando::Print {
+            response_topic,
+            printer_name,
+            file_to_print,
+            correlation_id,
+        } => {
             let resultado = imprimir_pdf(printer_name, file_to_print, plataforma).await;
-            match resultado {
-                Ok(_) => Some((response_topic, "Impresion exitosa".into())),
-                Err(_) => Some((response_topic, "Error al imprimir".into())),
-            }
+            let status = match resultado {
+                Ok(_) => "Impresion exitosa",
+                Err(_) => "Error al imprimir",
+            };
+            let respuesta = match correlation_id {
+                Some(id) => serde_json::json!({"correlationId": id, "status": status}).to_string(),
+                None => status.into(),
+            };
+            Some((response_topic, respuesta))
         }
 
         Comando::UpdateAir { response_topic, ambiente } => {

@@ -16,6 +16,8 @@ pub enum Comando {
         printer_name: String,
         #[serde(rename = "fileToPrint")]
         file_to_print: String,
+        #[serde(rename = "correlationId")]
+        correlation_id: Option<String>,
     },
     #[serde(rename = "update-air")]
     UpdateAir {
