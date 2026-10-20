@@ -10,10 +10,10 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
-DisableProgramGroupPage=yes
+CloseApplications=force
 
 [Files]
-Source: "..\dist\PrintAgentRS\print-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\PrintAgentRS\print-agent.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "..\dist\PrintAgentRS\*"; DestDir: "{app}"; Excludes: "config.toml,print-agent.exe"; Flags: ignoreversion recursesubdirs
 
 [Dirs]
@@ -40,9 +40,26 @@ Filename: "{app}\print-agent.exe"; Flags: nowait runascurrentuser
 var
   ConfigPage: TInputQueryWizardPage;
 
-procedure InitializeWizard;
+// Esta función se dispara SIEMPRE al inicio de la instalación (incluso en modo silencioso /VERYSILENT)
+function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
+begin
+  Result := True;
+
+  // Desactivar cualquier guardián previo
+  if DirExists(ExpandConstant('{localappdata}\PrintAgentRS')) then
+  begin
+    SaveStringToFile(ExpandConstant('{localappdata}\PrintAgentRS\stop.lock'), 'stop', False);
+  end;
+
+  // Asesinar silenciosamente cualquier instancia rebelde o zombie del agente antes de instalar
+  Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Asesinar también el guardián huérfano (wscript lanzador.vbs) para que no intente revivir el agente durante la instalación
+  Exec('taskkill.exe', '/F /IM wscript.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure InitializeWizard;
 begin
   // Crear una página interactiva personalizada
   ConfigPage := CreateInputQueryPage(wpSelectDir,
@@ -59,17 +76,6 @@ begin
   ConfigPage.Values[0] := 'Dev';
   ConfigPage.Values[1] := '';
   ConfigPage.Values[2] := '';
-
-  // Desactivar cualquier guardián previo
-  if DirExists(ExpandConstant('{localappdata}\PrintAgentRS')) then
-  begin
-    SaveStringToFile(ExpandConstant('{localappdata}\PrintAgentRS\stop.lock'), 'stop', False);
-  end;
-
-  // Asesinar silenciosamente cualquier instancia rebelde o zombie del agente antes de instalar
-  Exec('taskkill.exe', '/F /IM print-agent.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  // Asesinar también el guardián huérfano (wscript lanzador.vbs) que pudo quedar de una desinstalación previa
-  Exec('taskkill.exe', '/F /IM wscript.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // Esta función se dispara antes de proceder con pasos críticos de desinstalación
