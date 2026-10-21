@@ -4,29 +4,6 @@ use reqwest::Client;
 use tokio::io::AsyncWriteExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn es_version_mayor(nueva: &str, actual: &str) -> bool {
-    let parse_nums = |v: &str| -> Vec<u32> {
-        v.split('.')
-            .filter_map(|s| s.trim().parse::<u32>().ok())
-            .collect()
-    };
-    let v_nueva = parse_nums(nueva);
-    let v_actual = parse_nums(actual);
-
-    if v_nueva.is_empty() || v_actual.is_empty() {
-        return nueva > actual;
-    }
-
-    for (n, a) in v_nueva.iter().zip(v_actual.iter()) {
-        if n > a {
-            return true;
-        } else if n < a {
-            return false;
-        }
-    }
-    v_nueva.len() > v_actual.len()
-}
-
 pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Result<bool> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -49,12 +26,13 @@ pub async fn verificar_y_descargar(update_url: &str, version_actual: &str) -> Re
 
     let (version_nueva, hash_esperado) = (partes[0], partes[1]);
 
-    if !es_version_mayor(version_nueva, version_actual) {
+    // Si la versión del servidor es exactamente la misma que la instalada, no se requiere acción
+    if version_nueva == version_actual {
         tracing::info!("Agente actualizado (v{}).", version_actual);
         return Ok(false);
     }
 
-    tracing::info!("Nueva versión disponible: {} → {}", version_actual, version_nueva);
+    tracing::info!("Cambio de versión detectado en servidor: {} → {}", version_actual, version_nueva);
 
     let cur_dir = std::env::current_dir()?;
 
