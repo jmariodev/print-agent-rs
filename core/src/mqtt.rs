@@ -447,12 +447,12 @@ async fn procesar_comando(cmd: Comando, plataforma: Arc<dyn Plataforma>, cfg: &C
         } => {
             let resultado = imprimir_pdf(printer_name, file_to_print, plataforma).await;
             let status = match resultado {
-                Ok(_) => "Impresion exitosa",
-                Err(_) => "Error al imprimir",
+                Ok(_) => "Impresion exitosa".to_string(),
+                Err(e) => e.to_string(),
             };
             let respuesta = match correlation_id {
                 Some(id) => serde_json::json!({"correlationId": id, "status": status}).to_string(),
-                None => status.into(),
+                None => status,
             };
             Some((response_topic, respuesta))
         }

@@ -59,16 +59,123 @@ pub async fn listar_impresoras_win() -> Result<Vec<String>> {
     }
 }
 
+/// Verifica el estado físico y lógico de la impresora antes de tocar la cola del Spooler.
+/// Retorna un error descriptivo si la impresora está apagada, sin papel, atascada o en error.
+pub fn verificar_estado_impresora(nombre_impresora: &str) -> Result<()> {
+    unsafe {
+        let printer_name_w: Vec<u16> = format!("{}\0", nombre_impresora).encode_utf16().collect();
+        let mut h_printer = HANDLE::default();
+        let mut defaults = PRINTER_DEFAULTSW {
+            pDatatype: PWSTR::null(),
+            pDevMode: std::ptr::null_mut(),
+            DesiredAccess: PRINTER_ACCESS_USE,
+        };
+
+        if OpenPrinterW(PCWSTR(printer_name_w.as_ptr()), &mut h_printer, Some(&mut defaults)).is_err() {
+            bail!("Error: Impresora '{}' no encontrada en el equipo", nombre_impresora);
+        }
+
+        let mut cb_needed = 0;
+        let _ = GetPrinterW(h_printer, 2, None, &mut cb_needed);
+        if cb_needed == 0 {
+            let _ = ClosePrinter(h_printer);
+            return Ok(());
+        }
+
+        let mut buf = vec![0u8; cb_needed as usize];
+        if GetPrinterW(h_printer, 2, Some(buf.as_mut_slice()), &mut cb_needed).is_err() {
+            let _ = ClosePrinter(h_printer);
+            return Ok(());
+        }
+
+        let info = &*(buf.as_ptr() as *const PRINTER_INFO_2W);
+        let status = info.Status;
+        let attributes = info.Attributes;
+        let _ = ClosePrinter(h_printer);
+
+        // Banderas bloqueantes específicas de hardware y sistema
+        if status & PRINTER_STATUS_PAPER_OUT != 0 {
+            bail!("Error: Impresora sin papel");
+        }
+        if status & PRINTER_STATUS_OFFLINE != 0 || attributes & PRINTER_ATTRIBUTE_WORK_OFFLINE != 0 {
+            bail!("Error: Impresora fuera de línea o desconectada");
+        }
+        if status & PRINTER_STATUS_PAPER_JAM != 0 {
+            bail!("Error: Papel atascado en la impresora");
+        }
+        if status & PRINTER_STATUS_PAPER_PROBLEM != 0 {
+            bail!("Error: Problema con el papel en la impresora");
+        }
+        if status & PRINTER_STATUS_DOOR_OPEN != 0 {
+            bail!("Error: Tapa de la impresora abierta");
+        }
+        if status & PRINTER_STATUS_PAUSED != 0 {
+            bail!("Error: Impresora en pausa");
+        }
+        if status & PRINTER_STATUS_USER_INTERVENTION != 0 {
+            bail!("Error: La impresora requiere intervención del usuario (atención física)");
+        }
+        if status & PRINTER_STATUS_OUTPUT_BIN_FULL != 0 {
+            bail!("Error: Bandeja de salida llena o papel acumulado en la salida");
+        }
+        if status & PRINTER_STATUS_OUT_OF_MEMORY != 0 {
+            bail!("Error: Memoria de la impresora agotada");
+        }
+        if status & PRINTER_STATUS_ERROR != 0 {
+            bail!("Error: La impresora reporta falla de hardware");
+        }
+        if status & PRINTER_STATUS_NOT_AVAILABLE != 0 {
+            bail!("Error: Impresora no disponible");
+        }
+        if status & PRINTER_STATUS_NO_TONER != 0 {
+            bail!("Error: Impresora sin consumible o tóner");
+        }
+        if status & PRINTER_STATUS_SERVER_OFFLINE != 0 {
+            bail!("Error: Servidor de impresión de red fuera de línea");
+        }
+        if status & PRINTER_STATUS_SERVER_UNKNOWN != 0 {
+            bail!("Error: Servidor de impresión de red no disponible");
+        }
+        if status & PRINTER_STATUS_PENDING_DELETION != 0 {
+            bail!("Error: La impresora está en proceso de eliminación");
+        }
+        if status & PRINTER_STATUS_PAGE_PUNT != 0 {
+            bail!("Error: La impresora no puede procesar los datos de la página");
+        }
+
+        // Máscara de estados normales de actividad operativa que NO deben bloquear la comanda
+        let normal_mask = PRINTER_STATUS_PRINTING
+            | PRINTER_STATUS_BUSY
+            | PRINTER_STATUS_PROCESSING
+            | PRINTER_STATUS_WAITING
+            | PRINTER_STATUS_WARMING_UP
+            | PRINTER_STATUS_INITIALIZING
+            | PRINTER_STATUS_POWER_SAVE
+            | PRINTER_STATUS_TONER_LOW;
+
+        // Comodín para cualquier código de error propietario o no estándar devuelto por el driver
+        let abnormal_bits = status & !normal_mask;
+        if abnormal_bits != 0 {
+            bail!("Error: Estado no operativo en impresora (código: 0x{:08X})", abnormal_bits);
+        }
+
+        Ok(())
+    }
+}
+
 /// Imprime un PDF (vía GDI) y luego envía el corte (vía Spooler RAW).
 /// Esto simula el comportamiento exacto de Java:
 pub async fn imprimir_win(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
     // Bloquear para evitar que si el broker MQTT manda 2 impresiones, se solapen.
     let _guard = PRINT_MUTEX.lock().await;
 
-    // info!("Imprimiendo PDF (Job 1)...");
+    // 1. Pre-flight check: verificar estado de la impresora antes de enviar nada al Spooler
+    verificar_estado_impresora(nombre_impresora)?;
+
+    // 2. Renderizado GDI y envío al Spooler
     imprimir_pdf_gdi(nombre_impresora, ruta_pdf)?;
 
-    // info!("Enviando comando de corte (Job 2)...");
+    // 3. Envío de corte RAW
     if let Err(e) = enviar_corte_raw(nombre_impresora) {
         warn!("Fallo al enviar corte RAW: {}", e);
     }
@@ -110,15 +217,22 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
             bail!("Fallo StartDocW");
         }
 
+        let mut error_ocurrido: Option<anyhow::Error> = None;
+
         for (i, page) in document.pages().iter().enumerate() {
             if StartPage(hdc) <= 0 {
-                let _ = EndDoc(hdc);
-                let _ = DeleteDC(hdc);
-                bail!("Fallo StartPage en página {}", i);
+                error_ocurrido = Some(anyhow::anyhow!("Fallo StartPage en página {}", i));
+                break;
             }
 
             let render_config = PdfRenderConfig::new().set_target_width(ancho_px);
-            let bitmap = page.render_with_config(&render_config).context("Fallo render")?;
+            let bitmap = match page.render_with_config(&render_config) {
+                Ok(b) => b,
+                Err(e) => {
+                    error_ocurrido = Some(anyhow::anyhow!("Fallo render en página {}: {}", i, e));
+                    break;
+                }
+            };
 
             let bgra_bytes = bitmap.as_raw_bytes();
             let bmp_w = bitmap.width() as i32;
@@ -202,10 +316,17 @@ fn imprimir_pdf_gdi(nombre_impresora: &str, ruta_pdf: &str) -> Result<()> {
             );
 
             if EndPage(hdc) <= 0 {
-                let _ = EndDoc(hdc);
-                let _ = DeleteDC(hdc);
-                bail!("Fallo EndPage");
+                error_ocurrido = Some(anyhow::anyhow!("Fallo EndPage en página {}", i));
+                break;
             }
+        }
+
+        // Si ocurrió algún fallo, abortar el trabajo para que Windows lo borre de la cola inmediatamente
+        if let Some(err) = error_ocurrido {
+            warn!("Fallo en impresión GDI. Abortando trabajo de cola con AbortDoc: {}", err);
+            let _ = AbortDoc(hdc);
+            let _ = DeleteDC(hdc);
+            return Err(err);
         }
 
         let _ = EndDoc(hdc);
@@ -244,7 +365,6 @@ fn enviar_corte_raw(nombre_impresora: &str) -> Result<()> {
         }
 
         // Comando ESC/POS de corte (0x42 = Avanzar papel hasta el cuchillo y hacer Partial Cut).
-        // Restablecemos este comando original de Java porque el 0x01 corta directamente sobre el texto.
         let cut_cmd: [u8; 4] = [0x1D, 0x56, 0x42, 0x00];
         let mut bytes_escritos = 0;
 
@@ -254,12 +374,13 @@ fn enviar_corte_raw(nombre_impresora: &str) -> Result<()> {
         ).as_bool();
 
         if !write_ok || bytes_escritos == 0 {
-            warn!("WritePrinter falló");
+            warn!("WritePrinter falló al enviar corte RAW, abortando trabajo");
+            let _ = AbortPrinter(h_printer);
         } else {
             info!("Corte enviado ({} bytes).", bytes_escritos);
+            let _ = EndDocPrinter(h_printer);
         }
 
-        let _ = EndDocPrinter(h_printer);
         let _ = ClosePrinter(h_printer);
     }
     Ok(())

@@ -11,6 +11,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 CloseApplications=force
+DisableProgramGroupPage=yes
 
 [Files]
 Source: "..\dist\PrintAgentRS\print-agent.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
@@ -162,8 +163,8 @@ var
   TomlLines: TArrayOfString;
   VbsLines: TArrayOfString;
 begin
-  // Creamos el script en ssInstall para que esté listo ANTES del arranque post-instalación
-  if CurStep = ssInstall then
+  // Creamos el script en ssPostInstall cuando {app} ya existe con total seguridad
+  if CurStep = ssPostInstall then
   begin
     // Generar Guardián VBScript con Protección Mutua y Bajo Consumo (Polling)
     SetArrayLength(VbsLines, 17);
