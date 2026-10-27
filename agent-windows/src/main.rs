@@ -86,11 +86,38 @@ async fn main() -> Result<()> {
         tracing::warn!("🧟 REANIMACIÓN: El Agente ha sido levantado por el Guardián tras un cierre inesperado.");
     }
 
+const LANZADOR_VBS: &str = "\
+Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\n\
+Set shell = WScript.CreateObject(\"WScript.Shell\")\r\n\
+strDir = fso.GetParentFolderName(WScript.ScriptFullName)\r\n\
+shell.CurrentDirectory = strDir\r\n\
+\r\n\
+On Error Resume Next\r\n\
+Set lockFile = fso.OpenTextFile(\"guardian.lock\", 2, True)\r\n\
+If Err.Number <> 0 Then WScript.Quit\r\n\
+On Error GoTo 0\r\n\
+\r\n\
+Set objWMIService = GetObject(\"winmgmts:\\\\.\\root\\cimv2\")\r\n\
+Do\r\n\
+  If fso.FileExists(\"stop.lock\") Then Exit Do\r\n\
+  Set colProcesses = objWMIService.ExecQuery(\"Select * from Win32_Process Where Name = 'print-agent.exe'\")\r\n\
+  If colProcesses.Count = 0 Then shell.Run \"print-agent.exe --revived\", 0, False\r\n\
+  WScript.Sleep 2000\r\n\
+Loop\r\n";
+
     // --- PROTECCIÓN MUTUA: Lanzar o asegurar que el Guardián esté vivo ---
     let exe_path = std::env::current_exe().unwrap();
     let exe_dir = exe_path.parent().unwrap();
     let vbs_path = exe_dir.join("lanzador.vbs");
     
+    // Auto-reparación: Si no existe en disco, lo regeneramos inmediatamente
+    if !vbs_path.exists() {
+        match std::fs::write(&vbs_path, LANZADOR_VBS) {
+            Ok(_) => tracing::info!("🛡️ Guardián (lanzador.vbs) autoreparado exitosamente en disco."),
+            Err(e) => tracing::error!("❌ No se pudo autoreparar lanzador.vbs: {}", e),
+        }
+    }
+
     if vbs_path.exists() {
         // --- LIMPIEZA: Borrar candado de parada previo si existe ---
         let stop_lock = exe_dir.join("stop.lock");
